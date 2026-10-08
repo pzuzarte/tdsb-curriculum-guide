@@ -289,7 +289,7 @@ table.ho-focus { border-collapse: collapse; font-size: .85rem; width: 100%; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .84rem; color: var(--ink-2); margin-bottom: 12px; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend .sw { width: 12px; height: 12px; }
-.refkey { display: inline-block; width: 0; height: 14px; border-left: 2px solid var(--ref1); }
+.refkey { display: inline-block; width: 0; height: 14px; border-left: 4px solid var(--ref1); }
 .refkey.r2 { border-left: 2px dashed var(--ref2); }
 
 /* horizontal grouped bars */
@@ -301,9 +301,9 @@ table.ho-focus { border-collapse: collapse; font-size: .85rem; width: 100%; }
   background-image: linear-gradient(to right, var(--line) 1px, transparent 1px); background-size: 25% 100%; background-position: -0.5px 0; border-right: 1px solid var(--line); }
 .hb-bar { height: 12px; border-radius: 0 4px 4px 0; min-width: 2px; }
 .hb-none { height: 12px; font-size: .7rem; line-height: 12px; color: var(--ink-2); padding-left: 4px; }
-.hb-ref { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px solid var(--ref1); margin-left: -1px; }
+.hb-ref { position: absolute; top: 0; bottom: 0; width: 0; border-left: 4px solid var(--ref1); margin-left: -2px; }
 .hb-ref::after { content: ""; position: absolute; inset: 0 -6px; }
-.hb-ref.r2 { border-left: 2px dashed var(--ref2); }
+.hb-ref.r2 { border-left: 2px dashed var(--ref2); margin-left: -1px; z-index: 1; }
 .hb-axis { display: grid; grid-template-columns: 120px 1fr; gap: 12px; font-size: .72rem; color: var(--ink-2); }
 .hb-axis > div { position: relative; height: 14px; }
 .hb-axis > div span { position: absolute; transform: translateX(-50%); }
@@ -321,7 +321,7 @@ table.ho-focus { border-collapse: collapse; font-size: .85rem; width: 100%; }
 .trend .gap { fill: var(--surface-2); }
 .trend .ln { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .trend .ref { fill: none; stroke-width: 1.5; }
-.trend .ref.r1 { stroke: var(--ref1); }
+.trend .ref.r1 { stroke: var(--ref1); stroke-width: 3.5; }
 .trend .ref.r2 { stroke: var(--ref2); stroke-dasharray: 4 3; }
 .trend .pt { stroke: var(--surface); stroke-width: 2; }
 .trend .hit { fill: transparent; cursor: default; }

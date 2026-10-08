@@ -15,7 +15,7 @@
   const MYEQAO_KEY = "tdsb-guide-myeqao";
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261008c"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261008d"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -700,11 +700,18 @@
               ? `<div class="hb-none" data-tip="${esc(s.label)} -- ${esc(t("m." + m))}: ${esc(reasonText(s.school, year, i))}">--</div>`
               : `<div class="hb-bar" style="width:${v}%;background:${s.color}" data-tip="${esc(s.label)} -- ${esc(t("m." + m))}: ${pctTxt(v)}"></div>`;
           }).join("")}
-          ${ref.tdsb[i] != null ? `<span class="hb-ref r1" style="left:${ref.tdsb[i]}%" data-tip="${esc(t("sc.typTDSB"))}: ${pctTxt(ref.tdsb[i])}"></span>` : ""}
-          ${ref.ontario[i] != null ? `<span class="hb-ref r2" style="left:${ref.ontario[i]}%" data-tip="${esc(t("sc.typON"))}: ${pctTxt(ref.ontario[i])}"></span>` : ""}
+          ${refTicks(ref.tdsb[i], ref.ontario[i])}
         </div>
       </div>`).join("");
     return `${legend}<div class="hbars">${rows}<div class="hb-axis"><span></span><div>${[0, 25, 50, 75, 100].map(x => `<span style="left:${x}%">${pctTxt(x)}</span>`).join("")}</div></div></div>`;
+  }
+  // TDSB: thick solid tick underneath. Ontario: thin dashed tick on top, so both stay visible when equal.
+  function refTicks(tv, ov) {
+    const same = tv != null && tv === ov;
+    const tipT = same ? `${t("sc.typTDSB")}, ${t("sc.typON")}: ${pctTxt(tv)}` : `${t("sc.typTDSB")}: ${pctTxt(tv)}`;
+    const tipO = same ? tipT : `${t("sc.typON")}: ${pctTxt(ov)}`;
+    return (tv != null ? `<span class="hb-ref r1" style="left:${tv}%" data-tip="${esc(tipT)}"></span>` : "") +
+      (ov != null ? `<span class="hb-ref r2" style="left:${ov}%" data-tip="${esc(tipO)}"></span>` : "");
   }
   function chartLegend(series) {
     return `<div class="legend">${series.map(s => `<span><i class="sw" style="background:${s.color}"></i>${esc(s.label)}</span>`).join("")}
@@ -739,7 +746,7 @@
           ${[0, 50, 100].map(v => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${L - 6}" y="${y(v) + 4}" class="ax" text-anchor="end">${v}</text>`).join("")}
           ${gapX ? `<rect x="${gapX - 14}" y="${Tp}" width="28" height="${H - Tp - B}" class="gap"/>` : ""}
           ${years.map((yr, i) => `<text x="${x(i)}" y="${H - 10}" class="ax" text-anchor="middle">${esc(yr.slice(2))}</text>`).join("")}
-          ${linePaths(refO, "ref r2")}${linePaths(refT, "ref r1")}
+          ${linePaths(refT, "ref r1")}${linePaths(refO, "ref r2")}
           ${series.map(s => linePaths(years.map(yr => s.school.res[yr] ? s.school.res[yr][mi] : null), "ln", s.color)).join("")}
           ${series.map(s => years.map((yr, i) => {
             const v = s.school.res[yr] ? s.school.res[yr][mi] : null;
