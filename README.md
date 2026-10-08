@@ -34,13 +34,13 @@ These files are generated -- don't edit them by hand:
 | File | Source | Command |
 |---|---|---|
 | `js/expectations.en.js`, `js/expectations.fr.js` | Ministry of Education curriculum site (dcp.edu.gov.on.ca) content API | `python3 tools/fetch_expectations.py` |
-| `js/schools.js` | Ontario open data: [School information and student demographics](https://data.ontario.ca/dataset/school-information-and-student-demographics) | `python3 tools/build_schools.py` (needs `openpyxl`) |
+| `js/schools.js` | Results: [EQAO open data](https://www.eqao.com/about-eqao/open-data/). School list, map locations and context: Ontario open data, [School information and student demographics](https://data.ontario.ca/dataset/school-information-and-student-demographics) | `python3 tools/build_schools.py` (needs `openpyxl`) |
 
 After regenerating, bump `ASSET_V` in `js/app.js` and the `?v=` tags in `index.html` so browsers fetch the new files.
 
 **Notes on the data**
 - In French, Math, Science and Health & PE use the Ministry's French text (same expectations). Language, Arts, Social Studies and Kindergarten have French versions written for French-language schools that differ from what TDSB teaches, so the French site shows their official English text with a note. FSL is only published in English.
-- EQAO school results: the latest open data year is 2022-23. 2019-20 and 2020-21 are excluded (no assessments; the source repeats the prior year). "Typical school" values are medians across schools, not official board or provincial averages.
+- EQAO school results come from EQAO's open data, 2021-22 onward (EQAO posts each year's files in the fall; rerun the build script to pick up a new year). TDSB and Ontario reference values are EQAO's official all-student results (Ontario = English-language schools). School context (low income, English learners, etc.) comes from the latest Ministry school file, which lags a few years behind.
 
 ## Publish on GitHub Pages
 1. Create a GitHub repo and push this folder to `main`.
@@ -50,5 +50,5 @@ After regenerating, bump `ASSET_V` in `js/app.js` and the `?v=` tags in `index.h
 ## Disclaimer and licences
 This is an independent summary, not an official TDSB or Ontario Ministry of Education resource. See the official curriculum at <https://www.dcp.edu.gov.on.ca/en/curriculum>.
 - Curriculum expectations © King's Printer for Ontario, reproduced for non-commercial educational use with attribution.
-- School data: Ontario Ministry of Education, Open Government Licence – Ontario.
+- School results: EQAO open data. School directory and context: Ontario Ministry of Education, Open Government Licence – Ontario.
 - Map tiles © OpenStreetMap contributors; map library: Leaflet.

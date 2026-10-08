@@ -15,7 +15,7 @@
   const MYEQAO_KEY = "tdsb-guide-myeqao";
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261008"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261008c"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -767,7 +767,7 @@
   function contextTable(S, schools) {
     const med = ctxMedians(S);
     return `<div class="table-wrap"><table class="data">
-      <thead><tr><th></th>${schools.map(s => `<th>${esc(s.name)}</th>`).join("")}<th>${esc(t("sc.typTDSB"))}</th></tr></thead>
+      <thead><tr><th></th>${schools.map(s => `<th>${esc(s.name)}</th>`).join("")}<th>${esc(t("sc.typCtx"))}</th></tr></thead>
       <tbody>${Object.keys(med).map(k => `<tr><th scope="row">${esc(t("ctx." + k))}</th>${schools.map(s => `<td>${pctTxt(s.ctx[k])}</td>`).join("")}<td class="muted">${pctTxt(med[k])}</td></tr>`).join("")}
         <tr><th scope="row">${esc(t("sc.enrol"))}</th>${schools.map(s => `<td>${s.enrol == null ? "--" : s.enrol}</td>`).join("")}<td class="muted">${median(S.schools.map(s => s.enrol))}</td></tr>
       </tbody></table></div>`;
@@ -942,7 +942,7 @@
         <h2>${esc(t("sc.trendH"))}</h2>
         ${trendCharts(S, series)}
         <h2>${esc(t("sc.contextH"))}</h2>
-        <p class="muted">${esc(t("sc.contextP"))}</p>
+        <p class="muted">${esc(t("sc.contextP", { y: yearLabel(S.contextYear) }))}</p>
         ${contextTable(S, [s])}
         <p class="muted small">${esc(t("sc.typNote"))}</p>`;
       document.getElementById("cmpBtn").onclick = () => { if (toggleCompare(id)) viewSchool(id); };
@@ -976,7 +976,7 @@
         <h2>${esc(t("sc.trendH"))}</h2>
         ${trendCharts(S, series)}
         <h2>${esc(t("sc.ctxCompare"))}</h2>
-        <p class="muted">${esc(t("sc.contextP"))}</p>
+        <p class="muted">${esc(t("sc.contextP", { y: yearLabel(S.contextYear) }))}</p>
         ${contextTable(S, schools)}
         <p class="muted small">${esc(t("sc.typNote"))}</p>`;
       main.querySelector("#trayWrap").addEventListener("click", ev => {
@@ -1035,6 +1035,7 @@
             <p>${esc(t("me.levelMeaning")[level])}</p>
             ${s && v != null ? `<p class="muted">${esc(t("me.schoolPct", { s: s.name, p: v, g: gn, m: t("me.m")[m], y: yearLabel(st.year) }))}</p>` : ""}
             ${ref ? `<p class="muted small">${esc(t("me.compareTypical", { t: ref.tdsb[i], o: ref.ontario[i] }))}</p>` : ""}
+            ${s && s.dist && s.dist[i] && st.year === latestYear(S) ? `<p class="muted small">${esc(t("me.dist", { s: s.name, y: yearLabel(st.year), a: s.dist[i][0], b: s.dist[i][1], c: s.dist[i][2], d: s.dist[i][3], e: s.dist[i][4] }))}</p>` : ""}
           </div>`);
         }));
         document.getElementById("meOut").innerHTML = cards.length ? `<div class="grid grid-3">${cards.join("")}</div>` : `<p class="muted">${esc(t("me.empty"))}</p>`;

@@ -1,54 +1,51 @@
 #!/usr/bin/env python3
 """
-Build js/schools.js -- TDSB elementary school profiles and EQAO results -- from the
-Ontario Ministry of Education open dataset "School information and student demographics"
-(Open Government Licence - Ontario):
-https://data.ontario.ca/dataset/school-information-and-student-demographics
+Build js/schools.js -- TDSB elementary schools with EQAO Grade 3 and 6 results.
+
+Sources
+- EQAO open data (achievement results by school, board and province, from 2021-22):
+  https://www.eqao.com/about-eqao/open-data/
+- School directory, map coordinates and school context (latest year available):
+  Ontario Ministry of Education, "School information and student demographics"
+  (Open Government Licence - Ontario)
+  https://data.ontario.ca/dataset/school-information-and-student-demographics
 
 Usage:
     python3 tools/build_schools.py
 
 Requires: openpyxl (pip install openpyxl)
-
-Notes
-- Only school years with EQAO results are kept (no assessments in 2019-20 / 2020-21).
-- "Typical school" reference values are MEDIANS across schools (TDSB, and all Ontario
-  English-language schools), not official board/provincial averages.
 """
+import csv
+import io
 import json
 import os
 import re
-import statistics
 import sys
 import time
 import urllib.request
+import zipfile
 
 import openpyxl
 
-DATASET = "d85f68c5-fcb0-4b4d-aec5-3047db47dcd5"
-CKAN = f"https://data.ontario.ca/api/3/action/package_show?id={DATASET}"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CACHE = os.path.join(os.environ.get("TMPDIR", "/tmp"), "sif_cache")
-BOARD = "Toronto DSB"
-# EQAO did not run in these years (COVID); the source files repeat the previous year's results.
-SKIP_YEARS = {"2019-20", "2020-21"}
+CACHE = os.path.join(os.environ.get("TMPDIR", "/tmp"), "schools_cache")
+UA = {"User-Agent": "tdsb-curriculum-guide (parent education site)"}
 
-# Column names in the source workbook
-C = {
+BOARD_NAME = "Toronto DSB"   # name in the Ministry file
+BOARD_MIDENT = "66052"       # EQAO board id
+EQAO_OPEN_DATA = "https://www.eqao.com/about-eqao/open-data/"
+SIF_DATASET = "https://data.ontario.ca/api/3/action/package_show?id=d85f68c5-fcb0-4b4d-aec5-3047db47dcd5"
+
+MEASURES = [("3", "R"), ("3", "W"), ("3", "M"), ("6", "R"), ("6", "W"), ("6", "M")]
+LEVELS = ["L4", "L3", "L2", "L1", "NE1"]
+
+SIF = {
     "board": "Board Name", "num": "School Number", "name": "School Name", "level": "School Level",
     "lang": "School Language", "grades": "Grade Range", "street": "Street", "city": "City",
     "postal": "Postal Code", "phone": "Phone Number", "web": "School Website", "enrol": "Enrolment",
-    "lat": "Latitude", "lon": "Longitude", "special": "School Special Condition Code",
+    "lat": "Latitude", "lon": "Longitude",
 }
-RESULTS = [  # order matters: g3r, g3w, g3m, g6r, g6w, g6m
-    "Percentage of Grade 3 Students Achieving the Provincial Standard in Reading",
-    "Percentage of Grade 3 Students Achieving the Provincial Standard in Writing",
-    "Percentage of Grade 3 Students Achieving the Provincial Standard in Mathematics",
-    "Percentage of Grade 6 Students Achieving the Provincial Standard in Reading",
-    "Percentage of Grade 6 Students Achieving the Provincial Standard in Writing",
-    "Percentage of Grade 6 Students Achieving the Provincial Standard in Mathematics",
-]
-CONTEXT = {  # short key -> column
+CONTEXT = {  # short key -> Ministry column
     "ell": "Percentage of Students Whose First Language Is Not English",
     "newc": "Percentage of Students Who Are New to Canada from a Non-English Speaking Country",
     "sped": "Percentage of Students Receiving Special Education Services",
@@ -58,34 +55,15 @@ CONTEXT = {  # short key -> column
 }
 
 
-def resources():
-    with urllib.request.urlopen(CKAN, timeout=60) as r:
-        res = json.load(r)["result"]["resources"]
-    out = {}
-    for x in res:
-        m = re.search(r"sif_data_table_(\d{4})_(\d{4})_en\.xlsx$", x["url"])
-        if m:
-            out[f"{m.group(1)}-{m.group(2)[2:]}"] = x["url"]
-    return dict(sorted(out.items()))
-
-
-def download(year, url):
+def fetch(url, name):
     os.makedirs(CACHE, exist_ok=True)
-    fp = os.path.join(CACHE, f"sif_{year}.xlsx")
+    fp = os.path.join(CACHE, name)
     if not os.path.exists(fp):
-        print(f"  downloading {year} ...")
-        urllib.request.urlretrieve(url, fp)
-        time.sleep(0.5)
+        print(f"  downloading {name} ...")
+        with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=120) as r, open(fp, "wb") as f:
+            f.write(r.read())
+        time.sleep(1)
     return fp
-
-
-def pct(v):
-    """'76%' -> 76; suppressed/missing -> None plus a reason code."""
-    s = str(v).strip() if v is not None else ""
-    m = re.match(r"^(\d+(?:\.\d+)?)\s*%?$", s)
-    if m and s not in ("",):
-        return round(float(m.group(1))), None
-    return None, {"N/R": "nr", "N/D": "nd", "NA": "na", "SP": "nr"}.get(s, "na")
 
 
 def num(v):
@@ -95,103 +73,147 @@ def num(v):
         return None
 
 
-def read(fp):
-    ws = openpyxl.load_workbook(fp, read_only=True).active
+def pct(v):
+    """'76%' -> 76, '<1%' -> 0; 'N/R' (small group) -> None."""
+    s = (v or "").strip()
+    if s.startswith("<"):
+        return 0
+    m = re.match(r"^(\d+(?:\.\d+)?)%?$", s)
+    return round(float(m.group(1))) if m else None
+
+
+# ---------------------------------------------------------------- school directory
+def school_directory():
+    with urllib.request.urlopen(urllib.request.Request(SIF_DATASET, headers=UA), timeout=60) as r:
+        res = json.load(r)["result"]["resources"]
+    files = {}
+    for x in res:
+        m = re.search(r"sif_data_table_(\d{4})_(\d{4})_en\.xlsx$", x["url"])
+        if m:
+            files[m.group(1) + "-" + m.group(2)[2:]] = x["url"]
+    year = max(files)
+    print(f"school directory: Ministry data for {year}")
+    ws = openpyxl.load_workbook(fetch(files[year], f"sif_{year}.xlsx"), read_only=True).active
     rows = ws.iter_rows(values_only=True)
     header = [str(h).strip() if h else "" for h in next(rows)]
-    idx = {h: i for i, h in enumerate(header)}
+    schools = {}
     for r in rows:
-        if r and r[0]:
-            yield {h: r[i] for h, i in idx.items()}
+        if not r or not r[0]:
+            continue
+        d = dict(zip(header, r))
+        if d.get(SIF["board"]) != BOARD_NAME or d.get(SIF["level"]) != "Elementary" or d.get(SIF["lat"]) is None:
+            continue
+        sid = str(d[SIF["num"]]).strip()
+        schools[sid] = {
+            "id": sid, "name": str(d[SIF["name"]]).strip(), "grades": d.get(SIF["grades"]) or "",
+            "addr": d.get(SIF["street"]) or "", "city": d.get(SIF["city"]) or "",
+            "postal": d.get(SIF["postal"]) or "", "phone": d.get(SIF["phone"]) or "",
+            "web": d.get(SIF["web"]) or "", "enrol": num(d.get(SIF["enrol"])),
+            "lat": round(float(d[SIF["lat"]]), 5), "lon": round(float(d[SIF["lon"]]), 5),
+            "ctx": {k: num(d.get(col)) for k, col in CONTEXT.items()},
+            "res": {}, "why": {},
+        }
+    return year, schools
 
 
-def median(vals):
-    vals = [v for v in vals if v is not None]
-    return round(statistics.median(vals)) if vals else None
+# ---------------------------------------------------------------- EQAO results
+def eqao_files():
+    req = urllib.request.Request(EQAO_OPEN_DATA, headers=UA)
+    with urllib.request.urlopen(req, timeout=60) as r:
+        page = r.read().decode("utf-8", "replace")
+    out = {}
+    for url in set(re.findall(r'href="([^"]+Grade-([36])-(\d{4})-(\d{4})-Achievement-Results\.zip)"', page)):
+        u, grade, y1, y2 = url
+        out[(f"{y1}-{y2[2:]}", grade)] = u
+    return out
+
+
+def read_eqao(zpath):
+    """Yield rows (dicts) from the achievement CSV(s) in an EQAO zip, joined across split files."""
+    merged = {}
+    with zipfile.ZipFile(zpath) as z:
+        for name in sorted(n for n in z.namelist() if n.lower().endswith(".csv")):
+            with z.open(name) as f:
+                for row in csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig")):
+                    lang = row.get("Language") or row.get("Lang") or ""
+                    key = (row.get("OrgType"), row.get("OrgID"), lang)
+                    merged.setdefault(key, {}).update(row)
+    return merged.values()
 
 
 def main():
-    years = resources()
-    print("years found:", ", ".join(years))
-    schools, ref = {}, {}
-    for year, url in years.items():
-        if year in SKIP_YEARS:
-            print(f"  {year}: no EQAO assessments that year, skipped")
-            continue
-        rows = list(read(download(year, url)))
-        if not rows or RESULTS[0] not in rows[0]:
-            print(f"  {year}: no EQAO columns, skipped")
-            continue
-        has_any = False
-        prov = [[] for _ in RESULTS]
-        board = [[] for _ in RESULTS]
-        for r in rows:
-            if r.get(C["level"]) != "Elementary" or r.get(C["lang"]) != "English":
+    dir_year, schools = school_directory()
+    files = eqao_files()
+    years = sorted({y for y, _ in files})
+    print("EQAO years:", ", ".join(years))
+    reference = {}
+    dist = {}
+    for year in years:
+        ref = {"tdsb": [None] * 6, "ontario": [None] * 6}
+        res = {}
+        for grade in ("3", "6"):
+            if (year, grade) not in files:
                 continue
-            vals = [pct(r.get(col))[0] for col in RESULTS]
-            for i, v in enumerate(vals):
-                prov[i].append(v)
-            if r.get(C["board"]) != BOARD:
-                continue
-            for i, v in enumerate(vals):
-                board[i].append(v)
-            has_any = has_any or any(v is not None for v in vals)
-            sid = str(r[C["num"]]).strip()
-            s = schools.setdefault(sid, {"id": sid, "res": {}, "why": {}})
-            # latest year wins for descriptive fields
-            s.update({
-                "name": str(r[C["name"]]).strip(), "grades": r.get(C["grades"]) or "",
-                "addr": r.get(C["street"]) or "", "city": r.get(C["city"]) or "",
-                "postal": r.get(C["postal"]) or "", "phone": r.get(C["phone"]) or "",
-                "web": r.get(C["web"]) or "", "enrol": num(r.get(C["enrol"])),
-                "lat": r.get(C["lat"]), "lon": r.get(C["lon"]),
-                "ctx": {k: num(r.get(col)) for k, col in CONTEXT.items()},
-                "ctxYear": year,
-            })
-            pairs = [pct(r.get(col)) for col in RESULTS]
-            s["res"][year] = [p[0] for p in pairs]
-            s["why"][year] = [p[1] for p in pairs]
-        if not has_any:
-            for s in schools.values():
-                s["res"].pop(year, None)
-                s["why"].pop(year, None)
-            print(f"  {year}: no EQAO results (e.g. COVID pause), skipped")
-            continue
-        ref[year] = {"tdsb": [median(b) for b in board], "ontario": [median(p) for p in prov]}
-        print(f"  {year}: TDSB elementary schools with results: "
-              f"{sum(1 for s in schools.values() if year in s['res'] and any(v is not None for v in s['res'][year]))}")
+            rows = read_eqao(fetch(files[(year, grade)], f"eqao_g{grade}_{year}.zip"))
+            for r in rows:
+                lang = r.get("Language") or r.get("Lang")
+                kind = r.get("OrgType")
+                for i, (g, subj) in enumerate(MEASURES):
+                    if g != grade:
+                        continue
+                    v = pct(r.get(f"pctOverall{subj}_L34"))
+                    if kind == "P" and lang == "en":
+                        ref["ontario"][i] = v
+                    elif kind == "B" and r.get("BoardMident") == BOARD_MIDENT:
+                        ref["tdsb"][i] = v
+                    elif kind == "S" and r.get("BoardMident") == BOARD_MIDENT:
+                        sid = (r.get("SchoolMident") or "").strip().zfill(6)
+                        suppressed = (r.get("Suppressed") or "0") != "0"
+                        res.setdefault(sid, [None] * 6)[i] = None if suppressed else v
+                        if year == years[-1] and not suppressed:
+                            dist.setdefault(sid, [None] * 6)[i] = [pct(r.get(f"pctOverall{subj}_{lv}")) for lv in LEVELS]
+        reference[year] = ref
+        matched = 0
+        for sid, vals in res.items():
+            if sid in schools:
+                matched += 1
+                schools[sid]["res"][year] = vals
+        missing = len(set(res) - set(schools))
+        print(f"  {year}: {matched} TDSB schools with results"
+              f"{f' ({missing} not in the school directory, e.g. new schools)' if missing else ''}; "
+              f"TDSB {ref['tdsb']}, Ontario {ref['ontario']}")
 
-    # Drop schools that closed before the latest year and compact the reason codes
-    latest = max(ref)
-    out_schools = []
-    for s in sorted(schools.values(), key=lambda x: x["name"]):
-        if s.get("ctxYear") != latest:  # closed or merged before the latest year
-            continue
-        s["why"] = {y: w for y, w in s["why"].items() if any(w)}
-        if s.get("lat") is None:
-            continue
-        s["lat"], s["lon"] = round(float(s["lat"]), 5), round(float(s["lon"]), 5)
-        del s["ctxYear"]
-        out_schools.append(s)
+    # Why a value is blank: 'nr' = small group not reported, 'na' = school has no students in that grade
+    for s in schools.values():
+        for year, vals in s["res"].items():
+            codes = [None if v is not None else "nr" for v in vals]
+            for grade_block in (slice(0, 3), slice(3, 6)):
+                if all(v is None for v in vals[grade_block]):
+                    codes[grade_block] = ["na"] * 3
+            if any(codes):
+                s["why"][year] = codes
+        if s["id"] in dist:
+            s["dist"] = dist[s["id"]]
 
     data = {
         "built": time.strftime("%Y-%m-%d"),
-        "source": "https://data.ontario.ca/dataset/school-information-and-student-demographics",
-        "years": sorted(ref),
-        "measures": ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"],
-        "reference": ref,
-        "schools": out_schools,
+        "sources": {"eqao": EQAO_OPEN_DATA,
+                    "schools": "https://data.ontario.ca/dataset/school-information-and-student-demographics"},
+        "contextYear": dir_year,
+        "years": years,
+        "levels": LEVELS,
+        "reference": reference,
+        "schools": sorted(schools.values(), key=lambda x: x["name"]),
     }
     dest = os.path.join(ROOT, "js", "schools.js")
     with open(dest, "w", encoding="utf-8") as f:
-        f.write("/* TDSB elementary schools and EQAO results. Source: Ontario Ministry of Education, "
-                "School information and student demographics (Open Government Licence - Ontario).\n"
+        f.write("/* TDSB elementary schools and EQAO results. Sources: EQAO open data; Ontario Ministry of Education,\n"
+                "   School information and student demographics (Open Government Licence - Ontario).\n"
                 "   Generated by tools/build_schools.py -- do not edit by hand. */\n")
         f.write("window.SCHOOLS = ")
         json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
         f.write(";\n")
-    print(f"wrote {dest}: {len(out_schools)} schools, years {', '.join(data['years'])} "
-          f"({os.path.getsize(dest) // 1024} KB)")
+    print(f"wrote {dest}: {len(schools)} schools, years {', '.join(years)} ({os.path.getsize(dest) // 1024} KB)")
 
 
 if __name__ == "__main__":
