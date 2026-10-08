@@ -16,7 +16,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261008o"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261008p"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -129,7 +129,7 @@
     document.querySelectorAll("[data-i18n-html]").forEach(el => { el.innerHTML = t(el.dataset.i18nHtml); });
     updateThemeBtn();
     const lb = document.getElementById("langBtn");
-    lb.textContent = t("langSwitch");
+    lb.innerHTML = `<span class="lg-long">${esc(t("langSwitch"))}</span><span class="lg-short" aria-hidden="true">${lang === "en" ? "FR" : "EN"}</span>`;
     lb.setAttribute("aria-label", t("langSwitchLabel"));
     lb.lang = lang === "en" ? "fr" : "en";
     document.getElementById("sources").innerHTML = `<strong>${esc(t("footer.sources"))}</strong> ` +
@@ -242,12 +242,28 @@
         ${gradeChips(null)}
       </section>
       <h2>${esc(t("home.glanceH"))}</h2>
-      <p class="muted">${esc(t("home.glanceSub"))}</p>
+      <p class="muted"><span class="d-only">${esc(t("home.glanceSub"))}</span><span class="m-text">${esc(t("home.glanceSubM"))}</span></p>
       <div class="matrix-wrap"><table class="matrix">
         <thead><tr><th>${esc(t("home.subject"))}</th>${D.grades.map(g => `<th><a href="#/grade/${g.id}">${esc(g.short)}</a></th>`).join("")}</tr></thead>
         <tbody>${rows}</tbody></table></div>
+      <div class="glance-m">
+        <div class="grade-chips" role="group" aria-label="${esc(t("nav.grades"))}">${D.grades.map(g => `<button type="button" data-mg="${g.id}">${esc(g.short)}</button>`).join("")}</div>
+        <div id="glanceList" class="glance-list"></div>
+      </div>
       <h2>${esc(t("home.toolsH"))}</h2>
       <div class="grid grid-3">${tools.map(([h, i, k]) => toolCard(h, i, t(k)[0], t(k)[1])).join("")}</div>`;
+
+    // Phones: pick a grade, see every subject's focus as a list (the full grid needs a wide screen).
+    const showGlance = gid => {
+      const g = gradeById[gid];
+      main.querySelectorAll("[data-mg]").forEach(b => { b.classList.toggle("active", b.dataset.mg === gid); b.setAttribute("aria-pressed", String(b.dataset.mg === gid)); });
+      document.getElementById("glanceList").innerHTML = D.subjects.map(s => `
+        <a class="glance-item" href="#/grade/${gid}/${s.id}" style="--c:${s.color}">
+          <span class="gi-subj">${s.icon} ${esc(s.name)}</span><span class="gi-focus">${esc(shortFocus(s, gid))}</span></a>`).join("") +
+        `<a class="btn ghost glance-all" href="#/grade/${gid}">${esc(t("home.see", { g: g.name }))} →</a>`;
+    };
+    main.querySelector(".glance-m").addEventListener("click", ev => { const b = ev.target.closest("[data-mg]"); if (b) showGlance(b.dataset.mg); });
+    showGlance(loadStore().lastGrade && gradeById[loadStore().lastGrade] ? loadStore().lastGrade : "g1");
   }
 
   function shortFocus(s, gid) {
@@ -343,6 +359,8 @@
         <thead><tr><th></th>${D.grades.map(g => `<th><a href="#/grade/${g.id}/${s.id}">${esc(g.short)}</a></th>`).join("")}</tr></thead>
         <tbody>${s.threads.map(th => `<tr><th scope="row">${esc(th.name)}</th>${D.grades.map(g => `<td>${esc(th.values[g.id] || "")}</td>`).join("")}</tr>`).join("")}</tbody>
       </table></div>
+      <div class="thread-m">${s.threads.map(th => `<div class="card thread-card" style="--c:${s.color}"><h3>${esc(th.name)}</h3>
+        <dl>${D.grades.map(g => `<div><dt><a href="#/grade/${g.id}/${s.id}">${esc(g.short)}</a></dt><dd>${esc(th.values[g.id] || "")}</dd></div>`).join("")}</dl></div>`).join("")}</div>
       <h2>${esc(t("subject.gbg"))}</h2>
       <p class="muted">${esc(t("subject.scroll"))}</p>
       <div class="journey" style="--c:${s.color}">
@@ -792,7 +810,11 @@
   }
 
   const addBtn = id => { const on = getCompare().includes(id); return `<button type="button" class="btn add sm ${on ? "on" : ""}" data-toggle="${id}">${on ? "✓ " + esc(t("sc.remove")) : "+ " + esc(t("sc.add"))}</button>`; };
-  const caveat = S => `<div class="note">${t("sc.caveat_html", { y: yearLabel(latestYear(S)) })}</div>`;
+  const isPhone = () => window.matchMedia("(max-width: 700px)").matches;
+  const caveat = S => {
+    const body = t("sc.caveat_html", { y: yearLabel(latestYear(S)) }).replace(/^<strong>[^<]*<\/strong>\s*/, "");
+    return `<details class="note caveat" ${isPhone() ? "" : "open"}><summary>${esc(t("sc.caveatTitle"))}</summary><p>${body}</p></details>`;
+  };
 
   function compareTray(S) {
     const ids = getCompare(), by = schoolById(S);
@@ -891,15 +913,17 @@
     const ref = S.reference[year];
     const cell = (s, i) => {
       const v = s.res[year] ? s.res[year][i] : null;
-      return v == null ? `<td class="muted" title="${esc(reasonText(s, year, i))}">--</td>` : `<td>${pctTxt(v)}</td>`;
+      const lab = ` data-label="${esc(t("m." + MEASURES[i]))}"`;
+      return v == null ? `<td class="muted"${lab} title="${esc(reasonText(s, year, i))}">--</td>` : `<td${lab}>${pctTxt(v)}</td>`;
     };
-    return `<div class="table-wrap"><table class="data">
+    const refCells = vals => vals.map((v, i) => `<td data-label="${esc(t("m." + MEASURES[i]))}">${pctTxt(v)}</td>`).join("");
+    return `<div class="table-wrap"><table class="data stack">
       <thead><tr><th>${esc(t("sc.name"))}</th>${MEASURES.map(m => `<th>${esc(t("m." + m))}</th>`).join("")}</tr></thead>
       <tbody>${schools.map(s => `<tr><th scope="row">${esc(s.name)}</th>${MEASURES.map((m, i) => cell(s, i)).join("")}</tr>`).join("")}
-        <tr class="ref"><th scope="row">${esc(t("sc.typTDSB"))}</th>${ref.tdsb.map(v => `<td>${pctTxt(v)}</td>`).join("")}</tr>
-        <tr class="ref"><th scope="row">${esc(t("sc.typON"))}</th>${ref.ontario.map(v => `<td>${pctTxt(v)}</td>`).join("")}</tr>
+        <tr class="ref"><th scope="row">${esc(t("sc.typTDSB"))}</th>${refCells(ref.tdsb)}</tr>
+        <tr class="ref"><th scope="row">${esc(t("sc.typON"))}</th>${refCells(ref.ontario)}</tr>
         ${[...new Map(schools.filter(s => !s.tdsb && s.boardRef && s.boardRef[year]).map(s => [s.board, s.boardRef[year]])).entries()].map(([b, vals]) =>
-          `<tr class="ref"><th scope="row">${esc(t("sc.boardAll", { b }))}</th>${vals.map(v => `<td>${pctTxt(v)}</td>`).join("")}</tr>`).join("")}
+          `<tr class="ref"><th scope="row">${esc(t("sc.boardAll", { b }))}</th>${refCells(vals)}</tr>`).join("")}
       </tbody></table></div>`;
   }
 
@@ -918,10 +942,11 @@
   function contextTable(S, schools) {
     const med = ctxMedians(S), wtd = ctxWeighted(S);
     const fmt1 = v => (v == null ? "--" : (lang === "fr" ? `${String(v).replace(".", ",")} %` : `${v}%`));
-    return `<div class="table-wrap"><table class="data">
+    const L = s => ` data-label="${esc(s)}"`;
+    return `<div class="table-wrap"><table class="data stack">
       <thead><tr><th></th>${schools.map(s => `<th>${esc(s.name)}${s.tdsb ? "" : `<br><span class="muted small">${esc(s.board)}</span>`}</th>`).join("")}<th>${esc(t("sc.typCtx"))}</th><th>${esc(t("sc.allCtx"))}</th></tr></thead>
-      <tbody>${Object.keys(med).map(k => `<tr><th scope="row">${esc(t("ctx." + k))}</th>${schools.map(s => `<td>${pctTxt(s.ctx[k])}</td>`).join("")}<td class="muted">${pctTxt(med[k])}</td><td class="muted">${fmt1(wtd[k])}</td></tr>`).join("")}
-        <tr><th scope="row">${esc(t("sc.enrol"))}</th>${schools.map(s => `<td>${s.enrol == null ? "--" : s.enrol}</td>`).join("")}<td class="muted">${median(S.schools.map(s => s.enrol))}</td><td class="muted">--</td></tr>
+      <tbody>${Object.keys(med).map(k => `<tr><th scope="row">${esc(t("ctx." + k))}</th>${schools.map(s => `<td${L(s.name)}>${pctTxt(s.ctx[k])}</td>`).join("")}<td class="muted"${L(t("sc.typCtx"))}>${pctTxt(med[k])}</td><td class="muted"${L(t("sc.allCtx"))}>${fmt1(wtd[k])}</td></tr>`).join("")}
+        <tr><th scope="row">${esc(t("sc.enrol"))}</th>${schools.map(s => `<td${L(s.name)}>${s.enrol == null ? "--" : s.enrol}</td>`).join("")}<td class="muted"${L(t("sc.typCtx"))}>${median(S.schools.map(s => s.enrol))}</td><td class="muted"${L(t("sc.allCtx"))}>--</td></tr>
       </tbody></table></div>
       <p class="muted small">${esc(t("sc.ctxNote"))}</p>`;
   }
@@ -1219,8 +1244,8 @@
           })
         }));
         const sorted = pts.slice().sort((a, b) => b.r - a.r);
-        const row = p => `<tr><th scope="row"><a href="#/school/${p.s.id}">${esc(p.s.name)}</a></th><td>${pctTxt(p.x)}</td><td>${pctTxt(p.y)}</td><td>${pctTxt(Math.round(p.exp))}</td><td>${signed(p.r)}</td></tr>`;
-        document.getElementById("cOddsTbl").innerHTML = `<div class="table-wrap"><table class="data"><thead><tr><th>${esc(t("sc.name"))}</th><th>${esc(t("sc.lowinc"))}</th><th>${esc(m)}</th><th>${esc(t("city.expected"))}</th><th>${esc(t("city.diff"))}</th></tr></thead>
+        const row = p => `<tr><th scope="row"><a href="#/school/${p.s.id}">${esc(p.s.name)}</a></th><td data-label="${esc(t("sc.lowinc"))}">${pctTxt(p.x)}</td><td data-label="${esc(m)}">${pctTxt(p.y)}</td><td data-label="${esc(t("city.expected"))}">${pctTxt(Math.round(p.exp))}</td><td data-label="${esc(t("city.diff"))}">${signed(p.r)}</td></tr>`;
+        document.getElementById("cOddsTbl").innerHTML = `<div class="table-wrap"><table class="data stack"><thead><tr><th>${esc(t("sc.name"))}</th><th>${esc(t("sc.lowinc"))}</th><th>${esc(m)}</th><th>${esc(t("city.expected"))}</th><th>${esc(t("city.diff"))}</th></tr></thead>
           <tbody>${sorted.map(row).join("")}</tbody></table></div>`;
         drawCityMap(pts);
       }
@@ -1284,8 +1309,8 @@
         mount(document.getElementById("cIncome"), w => linesSVG(w, { xs: ys.map(yearLabel), y0: 0, y1: 100, h: 280, series, label: t("city.incomeH"), yTicks: [0, 25, 50, 75, 100] }));
         const last = series.map(s => s.vals[s.vals.length - 1]);
         document.getElementById("cIncTbl").innerHTML = `<p class="small"><strong>${esc(t("city.incomeGap", { y: yearLabel(ys[ys.length - 1]), a: pctTxt(last[0]), b: pctTxt(last[3]), d: last[0] != null && last[3] != null ? last[0] - last[3] : "--" }))}</strong></p>
-          <details class="tv"><summary>${esc(t("sc.tableView"))}</summary><div class="table-wrap"><table class="data"><thead><tr><th></th>${ys.map(y => `<th>${yearLabel(y)}</th>`).join("")}</tr></thead>
-          <tbody>${series.map(s => `<tr><th scope="row">${esc(s.label)}</th>${s.vals.map(v => `<td>${pctTxt(v)}</td>`).join("")}</tr>`).join("")}</tbody></table></div></details>`;
+          <details class="tv"><summary>${esc(t("sc.tableView"))}</summary><div class="table-wrap"><table class="data stack"><thead><tr><th></th>${ys.map(y => `<th>${yearLabel(y)}</th>`).join("")}</tr></thead>
+          <tbody>${series.map(s => `<tr><th scope="row">${esc(s.label)}</th>${s.vals.map((v, i) => `<td data-label="${yearLabel(ys[i])}">${pctTxt(v)}</td>`).join("")}</tr>`).join("")}</tbody></table></div></details>`;
       }
 
       function drawFunnel() {
@@ -1427,15 +1452,18 @@
           ...MEASURES.map(m => [m, t("m." + m)]), ["lowinc", t("sc.lowinc")], ["ell", t("sc.ell")]];
         const th = ([k, label]) => k === "grades" ? `<th>${esc(label)}</th>` :
           `<th aria-sort="${state.sort === k ? (state.dir > 0 ? "ascending" : "descending") : "none"}"><button class="sort" data-sort="${k}">${esc(label)}${state.sort === k ? (state.dir > 0 ? " ▲" : " ▼") : ""}</button></th>`;
-        document.getElementById("tbl").innerHTML = `<table class="data schools">
+        document.getElementById("tbl").innerHTML = `<label class="m-only m-sort">${esc(t("sc.sortBy"))}
+            <select id="sortSel">${cols.filter(([k]) => k !== "grades").map(([k, label]) => `<option value="${k}" ${state.sort === k ? "selected" : ""}>${esc(label)}</option>`).join("")}</select></label>
+          <table class="data schools stack">
           <thead><tr><th><span class="sr">${esc(t("sc.add"))}</span></th>${cols.map(th).join("")}</tr></thead>
           <tbody>${rows.map(s => `<tr>
-            <td><input type="checkbox" data-toggle="${s.id}" ${ids.includes(s.id) ? "checked" : ""} aria-label="${esc(t("sc.add"))}: ${esc(s.name)}"></td>
+            <td class="cb" data-label="${esc(t("sc.add"))}"><input type="checkbox" data-toggle="${s.id}" ${ids.includes(s.id) ? "checked" : ""} aria-label="${esc(t("sc.add"))}: ${esc(s.name)}"></td>
             <th scope="row"><a href="#/school/${s.id}">${esc(s.name)}</a></th>
-            ${state.near ? `<td>${s._d.toFixed(1)}</td>` : ""}
-            <td>${esc(s.grades)}</td><td>${s.enrol == null ? "--" : s.enrol}</td>
-            ${MEASURES.map((m, i) => { const v = s.res[year] ? s.res[year][i] : null; return v == null ? `<td class="muted" title="${esc(reasonText(s, year, i))}">--</td>` : `<td>${v}</td>`; }).join("")}
-            <td>${s.ctx.lowinc == null ? "--" : s.ctx.lowinc}</td><td>${s.ctx.ell == null ? "--" : s.ctx.ell}</td></tr>`).join("")}</tbody></table>`;
+            ${state.near ? `<td data-label="km">${s._d.toFixed(1)}</td>` : ""}
+            <td data-label="${esc(t("sc.grades"))}">${esc(s.grades)}</td><td data-label="${esc(t("sc.enrol"))}">${s.enrol == null ? "--" : s.enrol}</td>
+            ${MEASURES.map((m, i) => { const v = s.res[year] ? s.res[year][i] : null; const lab = esc(t("m." + m)); return v == null ? `<td class="muted" data-label="${lab}" title="${esc(reasonText(s, year, i))}">--</td>` : `<td data-label="${lab}">${v}</td>`; }).join("")}
+            <td data-label="${esc(t("sc.lowinc"))}">${s.ctx.lowinc == null ? "--" : s.ctx.lowinc}</td><td data-label="${esc(t("sc.ell"))}">${s.ctx.ell == null ? "--" : s.ctx.ell}</td></tr>`).join("")}</tbody></table>`;
+        document.getElementById("sortSel").addEventListener("change", ev => { state.sort = ev.target.value; state.dir = (state.sort === "name" || state.sort === "dist") ? 1 : -1; renderTable(); });
         document.getElementById("count").textContent = t("sc.showing", { n: rows.length, t: S.schools.length });
       }
 
@@ -1734,6 +1762,7 @@
     document.querySelectorAll(".nav a").forEach(l => l.classList.toggle("active", l.dataset.nav === navKey));
     document.getElementById("nav").classList.remove("open");
     document.querySelector(".menu-btn").setAttribute("aria-expanded", "false");
+    document.querySelector(".site-header").classList.remove("search-open");
 
     switch (page) {
       case "": viewHome(); break;
@@ -1759,9 +1788,20 @@
   }
 
   // ---------- startup ----------
+  const header = document.querySelector(".site-header");
+  const setSearch = open => {
+    header.classList.toggle("search-open", open);
+    document.getElementById("searchBtn").setAttribute("aria-expanded", String(open));
+  };
   document.querySelector(".menu-btn").addEventListener("click", ev => {
     const open = document.getElementById("nav").classList.toggle("open");
     ev.currentTarget.setAttribute("aria-expanded", String(open));
+    if (open) setSearch(false);
+  });
+  document.getElementById("searchBtn").addEventListener("click", () => {
+    const open = !header.classList.contains("search-open");
+    setSearch(open);
+    if (open) { document.getElementById("nav").classList.remove("open"); document.querySelector(".menu-btn").setAttribute("aria-expanded", "false"); document.getElementById("q").focus(); }
   });
   document.getElementById("searchForm").addEventListener("submit", ev => {
     ev.preventDefault();
