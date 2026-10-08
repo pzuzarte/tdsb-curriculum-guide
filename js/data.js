@@ -12,7 +12,8 @@
  *   home  : simple ways to support learning at home
  */
 
-window.CURRICULUM = {
+window.CURRICULUM_DATA = window.CURRICULUM_DATA || {};
+window.CURRICULUM_DATA.en = {
   lastReviewed: "October 2026",
 
   grades: [
@@ -26,7 +27,7 @@ window.CURRICULUM = {
       ask: ["Which letters and sounds is my child confident with?", "How is my child doing with early number sense (counting, comparing)?", "Is my child ready for the longer focus expected in Grade 1?", "Are there any early reading screening results I should know about?"] },
     { id: "g1", short: "Gr 1", name: "Grade 1", age: "Usually 6 during the year",
       summary: "The first year of subject-based learning and the first Provincial Report Card. Big growth in reading and writing, numbers to 50, and learning about community.",
-      big: ["Decoding and reading simple books", "Writing sentences", "Numbers to 50, adding and subtracting to 20", "Living things and seasons", "My roles at home, school and community"],
+      big: ["Decoding and reading simple books", "Writing sentences", "Numbers to 50, addition facts to 10", "Living things and seasons", "My roles at home, school and community"],
       ask: ["What reading level or stage is my child at, and what's the next step?", "Which phonics skills should we practise at home?", "How are their learning skills (organization, independence) developing?", "Did the early reading screening show anything we should work on?"] },
     { id: "g2", short: "Gr 2", name: "Grade 2", age: "Usually 7 during the year",
       summary: "Building reading fluency, longer writing, numbers to 200 and early fluency with addition and subtraction facts.",
@@ -51,18 +52,18 @@ window.CURRICULUM = {
   ],
 
   kindergartenFrames: [
-    { name: "Belonging and Contributing", icon: "🤝",
-      desc: "Children's sense of connection to others, to the classroom community and to the wider world, and the contributions they make.",
-      examples: ["Joining in group activities", "Showing care for others and the environment", "Recognizing and respecting differences"] },
-    { name: "Self-Regulation and Well-Being", icon: "🌱",
-      desc: "How children manage their own feelings, attention and behaviour, and how they care for their physical and mental health.",
-      examples: ["Calming down with support", "Following routines", "Healthy eating, active play and personal safety"] },
-    { name: "Demonstrating Literacy and Mathematics Behaviours", icon: "🔤",
-      desc: "Early reading, writing, oral language, number sense, patterning and spatial reasoning. The 2026 revision places a stronger, more explicit focus here.",
-      examples: ["Letter-sound knowledge and early phonics", "Counting and comparing quantities", "Talking about stories and ideas"] },
-    { name: "Problem Solving and Innovating", icon: "💡",
-      desc: "Curiosity, creativity, inquiry and early science and technology thinking, explored through play, building and the arts.",
-      examples: ["Asking questions and testing ideas", "Building and designing", "Expressing ideas through art, music and drama"] }
+    { name: "A. Foundations of Language and Mathematics", icon: "🔤",
+      desc: "Oral language, early reading and writing, number sense, patterns, data, geometry and measurement. The 2026 program gives this area a stronger, more explicit focus.",
+      examples: ["Letter-sound knowledge and early phonics", "Counting, comparing and early operations", "Talking about and creating texts"] },
+    { name: "B. Problem Solving and Innovating", icon: "💡",
+      desc: "Curiosity and inquiry: coding, scientific investigation and engineering design, and exploring natural and built environments.",
+      examples: ["Asking questions and testing ideas", "Designing, building and testing models", "Following and creating simple codes"] },
+    { name: "C. Self-Regulation and Well-Being", icon: "🌱",
+      desc: "Social skills, managing feelings and attention, health concepts, active participation and movement skills.",
+      examples: ["Calming down with support", "Following routines independently", "Healthy choices and active play"] },
+    { name: "D. Belonging and Contributing", icon: "🤝",
+      desc: "Identity and self-image, understanding perspectives and communities, caring for nature, and responding to and creating art.",
+      examples: ["Positive sense of self", "Respecting diversity and standing up against unfairness", "Exploring dance, drama, music and visual arts"] }
   ],
 
   subjects: [
@@ -79,10 +80,10 @@ window.CURRICULUM = {
         { name: "Word skills", values: { jk: "Rhymes; hears sounds", sk: "Most letter-sound pairs", g1: "Short vowels, blends, digraphs", g2: "Long vowel patterns; high-frequency words", g3: "Prefixes, suffixes, multisyllable words", g4: "Word origins & roots", g5: "Greek/Latin roots; vocabulary strategies", g6: "Complex morphology; precise vocabulary" } }
       ],
       grades: {
-        jk: { focus: "Part of the Kindergarten frame 'Demonstrating Literacy and Mathematics Behaviours'.",
+        jk: { focus: "Part of Kindergarten strand A: Foundations of Language and Mathematics.",
           learn: ["Listens to and talks about stories", "Recognizes some letters, especially in their own name", "Plays with rhyming and sounds in words", "Uses drawings and marks to share ideas", "Holds a book correctly and turns pages"],
           home: ["Read aloud together every day and talk about the pictures", "Sing songs and play rhyming games", "Point out letters on signs and packaging"] },
-        sk: { focus: "Part of the Kindergarten frame 'Demonstrating Literacy and Mathematics Behaviours', with a strong focus on early phonics.",
+        sk: { focus: "Part of Kindergarten strand A: Foundations of Language and Mathematics, with a strong focus on early phonics.",
           learn: ["Knows most letter names and their sounds", "Hears the first, middle and last sounds in simple words", "Blends sounds to read simple words (c-a-t)", "Writes their name and attempts words using letter sounds", "Retells a familiar story in order"],
           home: ["Play 'I spy something that starts with /m/'", "Let your child 'write' shopping lists and cards", "Ask 'What happened first? Next? At the end?' after reading"] },
         g1: { focus: "Learning to read: decoding words and reading simple books, plus writing complete sentences.",
@@ -115,35 +116,35 @@ window.CURRICULUM = {
       intro: "The 2020 math curriculum includes coding in every grade, financial literacy, and a focus on recalling math facts and building confidence (social-emotional learning skills).",
       threads: [
         { name: "Whole numbers", values: { jk: "Counts small groups", sk: "Counts to 30+; compares", g1: "To 50", g2: "To 200", g3: "To 1,000", g4: "To 10,000", g5: "To 100,000", g6: "To 1,000,000" } },
-        { name: "Operations", values: { jk: "More / less", sk: "Joins & separates groups", g1: "Add/subtract to 20", g2: "Facts to 20; 2-digit add/sub", g3: "3-digit add/sub; x facts for 2, 5, 10", g4: "x facts to 10 x 10", g5: "Multi-digit x and /", g6: "Operations with decimals & fractions" } },
-        { name: "Fractions & decimals", values: { jk: "Sharing fairly", sk: "Halves through sharing", g1: "Halves & fourths", g2: "Halves to eighths", g3: "Unit fractions; compares", g4: "Decimals to tenths", g5: "Decimals to hundredths", g6: "Thousandths; ratios; percents" } },
-        { name: "Coding", values: { jk: "Follows/gives directions", sk: "Sequences steps", g1: "Sequential code", g2: "Concurrent events", g3: "Repeating loops", g4: "Nested loops", g5: "Conditional statements", g6: "Nested events & conditionals" } },
-        { name: "Money", values: { jk: "Pretend shopping", sk: "Coin names in play", g1: "Canadian coins & values", g2: "Amounts up to 100¢", g3: "Amounts up to $100", g4: "Simple transactions", g5: "Budgets", g6: "Financial goals & choices" } }
+        { name: "Operations", values: { jk: "More / less", sk: "Joins & separates groups", g1: "Facts to 10; problems to 50", g2: "Facts to 20; add/sub to 100", g3: "Add/sub to 1,000; x facts for 2, 5, 10", g4: "x facts to 10 x 10; x and / by 1 digit", g5: "x facts to 12 x 12; 2-digit x 2-digit", g6: "Decimals & fractions; prime factors" } },
+        { name: "Fractions & decimals", values: { jk: "Sharing fairly", sk: "Halves through sharing", g1: "Halves & fourths by sharing", g2: "Thirds & sixths by sharing", g3: "Equivalent fractions", g4: "Halves to tenths; decimal tenths", g5: "To twelfths; hundredths; ratios", g6: "Thousandths; unlike denominators; percents" } },
+        { name: "Coding", values: { jk: "Follows/gives directions", sk: "Sequences steps", g1: "Sequential code", g2: "Concurrent events", g3: "Repeating loops", g4: "Nested loops", g5: "Conditional statements", g6: "Efficient code with conditionals" } },
+        { name: "Money", values: { jk: "Pretend shopping", sk: "Coin names in play", g1: "Coins to 50¢, bills to $50", g2: "Amounts up to $200", g3: "Making change", g4: "Payment methods; saving vs spending", g5: "Budgets, sales tax, credit & debt", g6: "Financial goals; interest rates" } }
       ],
       grades: {
-        jk: { focus: "Part of the Kindergarten frame 'Demonstrating Literacy and Mathematics Behaviours'.",
+        jk: { focus: "Part of Kindergarten strand A: Foundations of Language and Mathematics.",
           learn: ["Counts small collections by touching each object once", "Recognizes small quantities without counting (1-3)", "Notices and copies simple patterns", "Sorts objects by colour, size or shape", "Uses words like more, less, bigger, smaller"],
           home: ["Count stairs, snacks and toys together", "Make patterns with beads, blocks or claps", "Sort laundry or groceries"] },
-        sk: { focus: "Part of the Kindergarten frame 'Demonstrating Literacy and Mathematics Behaviours', with stronger focus on number sense.",
+        sk: { focus: "Part of Kindergarten strand A: Foundations of Language and Mathematics, with a stronger focus on number sense.",
           learn: ["Counts forward to 30+ and backward from 10", "Understands the last number counted tells 'how many'", "Compares groups and tells which has more", "Creates and extends patterns", "Names and describes 2D and 3D shapes", "Explores early addition and subtraction through stories"],
           home: ["Play board games with dice", "Ask 'How many more do we need?' when setting the table", "Go on a shape hunt around the house"] },
-        g1: { focus: "Numbers to 50, adding and subtracting to 20, and first coding.",
-          learn: ["Reads, writes, counts and compares numbers to 50", "Adds and subtracts within 20", "Splits shapes and quantities into halves and fourths", "Creates and describes patterns", "Writes and follows simple step-by-step code", "Identifies Canadian coins and their values", "Collects simple data and makes pictographs"],
+        g1: { focus: "Numbers to 50, addition facts to 10, fair sharing, and first coding.",
+          learn: ["Reads, writes, counts and compares numbers to 50", "Recalls addition facts to 10 and related subtraction facts", "Solves addition and subtraction problems with totals up to 50", "Shares fairly and sees that one half equals two fourths", "Creates and describes patterns", "Writes and follows simple step-by-step code", "Identifies Canadian coins up to 50¢ and bills up to $50", "Collects simple data and makes pictographs"],
           home: ["Practise making 10 in different ways (7 + 3, 6 + 4)", "Count coins from a piggy bank", "Play 'robot' - give step-by-step directions to cross a room"] },
         g2: { focus: "Numbers to 200 and quick recall of addition and subtraction facts to 20.",
-          learn: ["Counts, compares and orders numbers to 200", "Recalls addition and subtraction facts to 20", "Adds and subtracts two-digit numbers", "Uses fractions from halves to eighths", "Measures length in centimetres and metres", "Codes with events that happen at the same time", "Represents money amounts up to 100 cents"],
+          learn: ["Counts, compares and orders numbers to 200", "Recalls addition and subtraction facts to 20", "Adds and subtracts numbers with totals up to 100", "Understands multiplication as equal groups and division as sharing", "Shares fairly and sees that one third equals two sixths", "Measures length in centimetres and metres", "Codes with events that happen at the same time", "Shows the same amount of money in different ways, up to $200"],
           home: ["Play quick fact games in the car", "Measure things around the house", "Bake together and talk about halves and quarters"] },
         g3: { focus: "Numbers to 1,000, early multiplication and division, and coding with loops. EQAO math in spring.",
-          learn: ["Reads, compares and orders numbers to 1,000", "Adds and subtracts three-digit numbers", "Recalls multiplication facts for 2, 5 and 10", "Understands division as sharing and grouping", "Compares unit fractions", "Writes code with repeating loops", "Calculates money amounts up to $100", "Measures mass and capacity"],
+          learn: ["Reads, compares and orders numbers to 1,000", "Adds and subtracts three-digit numbers", "Recalls multiplication facts for 2, 5 and 10", "Understands division as sharing and grouping", "Represents multiplication up to 10 x 10 using arrays", "Finds equivalent fractions through fair sharing", "Writes code with repeating loops", "Calculates change for simple cash purchases"],
           home: ["Skip count by 2s, 5s and 10s", "Ask 'If 4 friends share 12 cookies, how many each?'", "Let your child help count change when shopping"] },
         g4: { focus: "Multiplication facts to 10 x 10, decimals to tenths, and nested loops in coding.",
-          learn: ["Reads and compares numbers to 10,000", "Recalls multiplication facts to 10 x 10 and related division facts", "Multiplies two-digit by one-digit numbers", "Understands decimals to tenths", "Writes code with nested loops", "Calculates area and perimeter", "Plans simple money transactions"],
+          learn: ["Reads and compares numbers to 10,000", "Recalls multiplication facts to 10 x 10 and related division facts", "Multiplies and divides two- or three-digit numbers by one-digit numbers", "Understands fractions to tenths and decimal tenths", "Writes code with nested loops", "Finds the area of rectangles and classifies angles", "Explains spending, saving, earning, investing and donating"],
           home: ["Practise times tables with games, cards or apps", "Read prices and compare costs at the grocery store", "Measure a room to find its area"] },
-        g5: { focus: "Larger numbers, decimals to hundredths, budgeting and conditional statements in code.",
-          learn: ["Reads and compares numbers to 100,000", "Works with decimals to hundredths", "Multiplies two-digit by two-digit numbers", "Divides three-digit by one-digit numbers", "Uses coding with conditional statements (if/then)", "Creates simple budgets", "Measures and classifies angles and triangles"],
+        g5: { focus: "Larger numbers, multiplication facts to 12 x 12, decimals to hundredths, budgeting and conditional statements in code.",
+          learn: ["Reads and compares numbers to 100,000", "Recalls multiplication facts to 12 x 12", "Works with decimals to hundredths and adds fractions with like denominators", "Multiplies two-digit by two-digit numbers", "Divides three-digit by two-digit numbers", "Uses coding with conditional statements (if/then)", "Creates simple budgets and calculates sales tax", "Measures angles with a protractor"],
           home: ["Plan a party or outing budget together", "Look at sports stats or weather data", "Try free block-coding sites like Scratch"] },
         g6: { focus: "Numbers to one million, fractions, decimals, ratios, percents and integers. EQAO math in spring.",
-          learn: ["Reads and compares numbers to 1,000,000 and decimals to thousandths", "Understands positive and negative integers", "Works with ratios, rates and percents", "Multiplies and divides decimals", "Writes code with nested events and conditionals", "Analyses data and probability", "Calculates area of triangles and parallelograms", "Sets financial goals and compares ways of paying"],
+          learn: ["Reads and compares numbers to 1,000,000 and decimals to thousandths", "Understands positive and negative integers", "Works with ratios, rates and percents", "Uses divisibility rules and prime factors", "Adds and subtracts fractions with unlike denominators", "Multiplies and divides with decimals and fractions", "Writes efficient code with conditional statements", "Analyses data and probability", "Finds the area of composite shapes and surface area of prisms", "Sets financial goals and understands interest rates"],
           home: ["Calculate discounts and tips (10%, 25%)", "Read temperatures below zero", "Compare unit prices at the store"] }
       }
     },
@@ -152,7 +153,7 @@ window.CURRICULUM = {
     {
       id: "sci", name: "Science & Technology", icon: "🔬", color: "#2e9a6b",
       doc: "Ontario Science and Technology curriculum, Grades 1-8 (2022)",
-      url: "https://www.dcp.edu.gov.on.ca/en/curriculum/elementary-science-technology",
+      url: "https://www.dcp.edu.gov.on.ca/en/curriculum/science-technology",
       strands: ["STEM Skills and Connections", "Life Systems", "Matter and Energy", "Structures and Mechanisms", "Earth and Space Systems"],
       intro: "The 2022 curriculum adds a STEM Skills strand in every grade, including scientific inquiry, engineering design, coding and connections to real-world issues.",
       threads: [
@@ -162,10 +163,10 @@ window.CURRICULUM = {
         { name: "Earth & Space", values: { jk: "Weather talk", sk: "Seasons", g1: "Daily and seasonal changes", g2: "Air and water in the environment", g3: "Soils in the environment", g4: "Rocks, minerals and erosion", g5: "Conservation of energy and resources", g6: "Space" } }
       ],
       grades: {
-        jk: { focus: "Part of the Kindergarten frame 'Problem Solving and Innovating'.",
+        jk: { focus: "Part of Kindergarten strand B: Problem Solving and Innovating (science, engineering and coding).",
           learn: ["Asks 'why' and 'how' questions", "Observes plants, animals and weather", "Explores materials like sand, water and blocks", "Describes what they notice using their senses"],
           home: ["Go on nature walks in a local park or ravine", "Let your child help water plants", "Ask 'What do you think will happen if...?'"] },
-        sk: { focus: "Part of the Kindergarten frame 'Problem Solving and Innovating', with more opportunities for early STEM learning.",
+        sk: { focus: "Part of Kindergarten strand B: Problem Solving and Innovating, including early coding and engineering design.",
           learn: ["Makes predictions and tests them", "Builds and improves structures", "Notices changes in seasons and weather", "Sorts living and non-living things", "Uses simple tools like magnifiers"],
           home: ["Build with recycled materials", "Track the weather on a calendar", "Plant seeds and watch them grow"] },
         g1: { focus: "Living things, energy, everyday materials and the seasons.",
@@ -193,7 +194,7 @@ window.CURRICULUM = {
     {
       id: "ss", name: "Social Studies", icon: "🌎", color: "#c08a1e",
       doc: "Ontario Social Studies Grades 1-6; History and Geography Grades 7-8 (2018, with 2023 updates)",
-      url: "https://www.dcp.edu.gov.on.ca/en/curriculum",
+      url: "https://www.dcp.edu.gov.on.ca/en/curriculum/elementary-sshg",
       strands: ["A. Heritage and Identity", "B. People and Environments"],
       intro: "Each grade has two strands, explored through an inquiry process. First Nations, Metis and Inuit perspectives are woven throughout.",
       threads: [
@@ -201,10 +202,10 @@ window.CURRICULUM = {
         { name: "People & Environments", values: { jk: "Our classroom", sk: "Our neighbourhood", g1: "The local community", g2: "Global communities", g3: "Living and working in Ontario", g4: "Political and physical regions of Canada", g5: "Role of government and responsible citizenship", g6: "Canada's interactions with the global community" } }
       ],
       grades: {
-        jk: { focus: "Part of the Kindergarten frame 'Belonging and Contributing'.",
+        jk: { focus: "Part of Kindergarten strand D: Belonging and Contributing.",
           learn: ["Talks about themselves and their family", "Shows awareness of others' feelings", "Takes part in classroom routines and jobs", "Notices that people have different traditions"],
           home: ["Share family photos and stories", "Talk about helpers in your neighbourhood"] },
-        sk: { focus: "Part of the Kindergarten frame 'Belonging and Contributing'.",
+        sk: { focus: "Part of Kindergarten strand D: Belonging and Contributing.",
           learn: ["Describes their role in the classroom community", "Shows respect for diversity", "Recognizes places in their community", "Contributes to group decisions"],
           home: ["Walk your neighbourhood and name places (library, park, fire station)", "Celebrate traditions from different cultures"] },
         g1: { focus: "My roles and responsibilities, and my local community.",
@@ -232,7 +233,7 @@ window.CURRICULUM = {
     {
       id: "hpe", name: "Health & Physical Education", icon: "⚽", color: "#9b4fc2",
       doc: "Ontario Health and Physical Education curriculum, Grades 1-8 (2019)",
-      url: "https://www.dcp.edu.gov.on.ca/en/curriculum/elementary-health-physical-education",
+      url: "https://www.dcp.edu.gov.on.ca/en/curriculum/elementary-health-and-physical-education",
       strands: ["Social-Emotional Learning Skills", "Active Living", "Movement Competence", "Healthy Living (healthy eating, personal safety, substance use, human development & sexual health, mental health)"],
       intro: "Students build physical skills and healthy habits, along with mental health literacy and online safety. Parents may request that their child be exempted from the Human Development and Sexual Health expectations -- contact the principal.",
       threads: [
@@ -240,10 +241,10 @@ window.CURRICULUM = {
         { name: "Healthy living", values: { jk: "Healthy routines", sk: "Safety rules", g1: "Food choices; body parts; safety", g2: "Healthy eating; caring for self", g3: "Healthy relationships; food origins", g4: "Bullying; safe tech use", g5: "Puberty; self-concept", g6: "Puberty changes; healthy decisions" } }
       ],
       grades: {
-        jk: { focus: "Part of the Kindergarten frame 'Self-Regulation and Well-Being'.",
+        jk: { focus: "Part of Kindergarten strand C: Self-Regulation and Well-Being.",
           learn: ["Runs, jumps, hops and balances", "Washes hands and follows healthy routines", "Names feelings and seeks help", "Knows basic safety rules"],
           home: ["Play outside every day", "Name feelings together ('You look frustrated')"] },
-        sk: { focus: "Part of the Kindergarten frame 'Self-Regulation and Well-Being'.",
+        sk: { focus: "Part of Kindergarten strand C: Self-Regulation and Well-Being.",
           learn: ["Throws, catches and kicks a ball", "Uses calming strategies with support", "Makes healthy food choices", "Knows how to stay safe at school and outdoors"],
           home: ["Practise deep breathing together", "Let your child help make a healthy snack"] },
         g1: { focus: "Basic movement skills, healthy food choices and personal safety.",
@@ -271,7 +272,7 @@ window.CURRICULUM = {
     {
       id: "arts", name: "The Arts", icon: "🎨", color: "#d4417f",
       doc: "Ontario The Arts curriculum, Grades 1-8 (2009)",
-      url: "https://www.dcp.edu.gov.on.ca/en/curriculum",
+      url: "https://www.dcp.edu.gov.on.ca/en/curriculum/elementary-arts",
       strands: ["Dance", "Drama", "Music", "Visual Arts"],
       intro: "Each of the four arts is taught every year using the creative process (making art) and the critical analysis process (responding to art).",
       threads: [
@@ -279,10 +280,10 @@ window.CURRICULUM = {
         { name: "Responding", values: { jk: "Shares likes", sk: "Describes art", g1: "Shares feelings about works", g2: "Describes choices made", g3: "Explains artistic choices", g4: "Analyses works from cultures", g5: "Compares artistic forms", g6: "Interprets meaning & context" } }
       ],
       grades: {
-        jk: { focus: "Part of the Kindergarten frame 'Problem Solving and Innovating'.",
+        jk: { focus: "Part of Kindergarten strand D: Belonging and Contributing (responding to and creating art).",
           learn: ["Explores paint, clay and other materials", "Sings songs and moves to music", "Engages in pretend play", "Shares their creations"],
           home: ["Keep art supplies within reach", "Dance to music together"] },
-        sk: { focus: "Part of the Kindergarten frame 'Problem Solving and Innovating'.",
+        sk: { focus: "Part of Kindergarten strand D: Belonging and Contributing (responding to and creating art).",
           learn: ["Plans and creates art with intent", "Keeps a steady beat", "Acts out stories", "Talks about their own and others' art"],
           home: ["Put on puppet shows", "Visit the AGO (free for youth under 25)"] },
         g1: { focus: "Exploring the basic elements of each art form.",
@@ -310,7 +311,7 @@ window.CURRICULUM = {
     {
       id: "fsl", name: "French", icon: "🇫🇷", color: "#2c8fb0",
       doc: "Ontario French as a Second Language: Core French, Extended French, French Immersion, Grades 1-8 (2013)",
-      url: "https://www.dcp.edu.gov.on.ca/en/curriculum",
+      url: "https://www.dcp.edu.gov.on.ca/en/curriculum/elementary-fsl",
       strands: ["Listening", "Speaking", "Reading", "Writing"],
       intro: "In TDSB's English program, Core French starts in Grade 4. TDSB's French Immersion entry points are JK (Early French Immersion) and Grade 4 (Middle French Immersion). Ontario requires students to have at least 600 hours of French by the end of Grade 8.",
       threads: [
@@ -334,7 +335,7 @@ window.CURRICULUM = {
         g3: { focus: "No French in the English program. Families can apply this year for Middle French Immersion starting in Grade 4.",
           learn: [],
           home: ["Check TDSB's Middle French Immersion page for the application window"] },
-        g4: { focus: "Core French begins in the English program (usually about 40 minutes a day).",
+        g4: { focus: "Core French begins in the English program.",
           learn: ["Understands simple spoken French in familiar contexts", "Uses everyday words and phrases (greetings, numbers, colours)", "Reads simple texts with support", "Writes short sentences using models"],
           home: ["Label items around the house in French", "Use free apps or French cartoons"] },
         g5: { focus: "Core French continues, building confidence speaking and understanding.",
@@ -399,13 +400,13 @@ window.CURRICULUM = {
     { term: "Achievement chart", def: "The tool teachers use to assess four categories of learning: Knowledge & Understanding, Thinking, Communication, and Application." },
     { term: "CCAT-7", def: "Canadian Cognitive Abilities Test. TDSB uses it to screen all Grade 3 students for possible giftedness." },
     { term: "Catchment school", def: "Your local school, determined by your home address. Use TDSB's 'Find Your School' tool." },
-    { term: "Communication of Learning", def: "The Kindergarten report card. It uses written comments about the four frames, not letter grades." },
+    { term: "Communication of Learning", def: "The Kindergarten report card. It uses written comments about the four areas of learning, not letter grades." },
     { term: "Core French", def: "A daily French class in the English program, starting in Grade 4 at TDSB." },
     { term: "DECE", def: "Designated Early Childhood Educator. Works alongside the teacher in Kindergarten classes." },
     { term: "EQAO", def: "Education Quality and Accountability Office. Runs the province-wide Grade 3 and Grade 6 reading, writing and math assessments." },
     { term: "ESL / ELD", def: "English as a Second Language / English Literacy Development. Supports for English language learners." },
     { term: "Expectations (overall & specific)", def: "Overall expectations describe the big learning goals by the end of a grade. Specific expectations break them into detailed skills." },
-    { term: "Four frames", def: "The way Kindergarten learning is organized: Belonging and Contributing; Self-Regulation and Well-Being; Demonstrating Literacy and Mathematics Behaviours; Problem Solving and Innovating." },
+    { term: "Kindergarten strands (frames)", def: "The four areas Kindergarten learning is organized into. In the 2026 program: A. Foundations of Language and Mathematics; B. Problem Solving and Innovating; C. Self-Regulation and Well-Being; D. Belonging and Contributing. Earlier versions called these the four frames." },
     { term: "French Immersion", def: "A program where most instruction is in French. TDSB entry points: JK (Early) and Grade 4 (Middle)." },
     { term: "IEP", def: "Individual Education Plan. A written plan describing accommodations or modified expectations for a student who needs them." },
     { term: "IPRC", def: "Identification, Placement and Review Committee. Formally identifies a student as exceptional (e.g., gifted, learning disability) and recommends placement." },
