@@ -112,10 +112,10 @@ def school_directory():
                         "lang": "fr" if d.get(SIF["lang"]) == "French" else "en", "grades": d.get(SIF["grades"]) or "",
                         "lat": round(float(d[SIF["lat"]]), 4), "lon": round(float(d[SIF["lon"]]), 4),
                         "lowinc": num(d.get(CONTEXT["lowinc"]))})
-        if d.get(SIF["board"]) != BOARD_NAME:
-            continue
         sid = str(d[SIF["num"]]).strip()
         schools[sid] = {
+            "board": d.get(SIF["board"]) or "", "boardNo": str(d.get("Board Number") or "").lstrip("B"),
+            "fr": d.get(SIF["lang"]) == "French",
             "id": sid, "name": str(d[SIF["name"]]).strip(), "grades": d.get(SIF["grades"]) or "",
             "addr": d.get(SIF["street"]) or "", "city": d.get(SIF["city"]) or "",
             "postal": d.get(SIF["postal"]) or "", "phone": d.get(SIF["phone"]) or "",
@@ -133,7 +133,7 @@ def eqao_files(kind="Achievement-Results"):
     with urllib.request.urlopen(req, timeout=60) as r:
         page = r.read().decode("utf-8", "replace")
     out = {}
-    for url in set(re.findall(r'href="([^"]+Grade-([36])-(\d{4})-(\d{4})-' + kind + r'\.zip)"', page)):
+    for url in set(re.findall(r'href="([^"]+Grade-([36])-(\d{4})-(\d{4})-' + kind + r'\.zip)"', page, flags=re.I)):  # EQAO file names vary in case
         u, grade, y1, y2 = url
         out[(f"{y1}-{y2[2:]}", grade)] = u
     return out
@@ -150,6 +150,10 @@ def read_eqao(zpath):
                     key = (row.get("OrgType"), row.get("OrgID"), lang)
                     merged.setdefault(key, {}).update(row)
     return merged.values()
+
+
+def board_slug(name):
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
 def write_ontario(ontario, files, latest, dir_year):
@@ -174,7 +178,7 @@ def write_ontario(ontario, files, latest, dir_year):
         rows.append([o["id"], o["name"], bidx[o["board"]], 1 if o["lang"] == "fr" else 0, o["grades"], o["lat"], o["lon"], o["lowinc"]]
                     + res.get((o["id"].zfill(6), o["lang"]), [None] * 6))
     with_res = sum(1 for r in rows if any(v is not None for v in r[8:]))
-    data = {"year": latest, "contextYear": dir_year, "boards": boards, "tdsb": BOARD_NAME,
+    data = {"year": latest, "contextYear": dir_year, "boards": boards, "boardSlugs": [board_slug(b) for b in boards], "tdsb": BOARD_NAME,
             "fields": ["id", "name", "board", "fr", "grades", "lat", "lon", "lowinc", "g3r", "g3w", "g3m", "g6r", "g6w", "g6m"],
             "rows": rows}
     dest = os.path.join(ROOT, "js", "schools-ontario.js")
@@ -195,6 +199,7 @@ def main():
     years = sorted({y for y, _ in files})
     print("EQAO years:", ", ".join(years))
     reference = {}
+    board_ref = {}  # board mident -> {year: [6 x L34]}
     latest = years[-1]
     extra = {}  # sid -> {"dist": {year: [...]}, "n": {year: [...]}, "sub": {...}, "sq": [...]}
     for year in years:
@@ -217,6 +222,8 @@ def main():
                     levels = levels if all(x is not None for x in levels) else None
                     subs = {k: pct(r.get(f"pctOverall{subj}_{code}_L34")) for k, code in SUBGROUPS.items()}
                     who = None
+                    if kind == "B":
+                        board_ref.setdefault(r.get("BoardMident"), {}).setdefault(year, [None] * 6)[i] = v
                     if kind == "P" and lang == "en":
                         who = "ontario"
                     elif kind == "B" and r.get("BoardMident") == BOARD_MIDENT:
@@ -226,7 +233,7 @@ def main():
                         ref["dist"][who][i] = levels
                         for k in SUBGROUPS:
                             ref["sub"][k][who][i] = subs[k]
-                    elif kind == "S" and r.get("BoardMident") == BOARD_MIDENT:
+                    elif kind == "S":
                         sid = (r.get("SchoolMident") or "").strip().zfill(6)
                         suppressed = (r.get("Suppressed") or "0") != "0"
                         res.setdefault(sid, [None] * 6)[i] = None if suppressed else v
@@ -240,9 +247,9 @@ def main():
         matched = 0
         for sid, vals in res.items():
             if sid in schools:
-                matched += 1
+                matched += schools[sid]["board"] == BOARD_NAME
                 schools[sid]["res"][year] = vals
-        missing = len(set(res) - set(schools))
+        missing = len({sid for sid in res if sid not in schools})
         print(f"  {year}: {matched} TDSB schools with results"
               f"{f' ({missing} not in the school directory, e.g. new schools)' if missing else ''}; "
               f"TDSB {ref['tdsb']}, Ontario {ref['ontario']}")
@@ -261,7 +268,7 @@ def main():
                 sq_ref["ontario"][off:off + 4] = vals
             elif kind == "B" and r.get("BoardMident") == BOARD_MIDENT:
                 sq_ref["tdsb"][off:off + 4] = vals
-            elif kind == "S" and r.get("BoardMident") == BOARD_MIDENT and (r.get("Suppressed") or "0") == "0":
+            elif kind == "S" and (r.get("Suppressed") or "0") == "0":
                 sid = (r.get("SchoolMident") or "").strip().zfill(6)
                 extra.setdefault(sid, {"dist": {}, "n": {}, "sub": {}}).setdefault("sq", [None] * 8)[off:off + 4] = vals
     print(f"questionnaire {latest}: TDSB {sq_ref['tdsb']}, Ontario {sq_ref['ontario']}")
@@ -294,9 +301,33 @@ def main():
         "reference": reference,
         "sqItems": [k for k, _ in SQ_ITEMS],
         "sqReference": sq_ref,
-        "schools": sorted(schools.values(), key=lambda x: x["name"]),
+        "schools": sorted((x for x in schools.values() if x["board"] == BOARD_NAME), key=lambda x: x["name"]),
     }
     write_ontario(ontario, files, latest, dir_year)
+
+    # Every other board: one file each, loaded only when one of its schools is opened or compared.
+    bdir = os.path.join(ROOT, "js", "boards")
+    os.makedirs(bdir, exist_ok=True)
+    for old in os.listdir(bdir):
+        if old.endswith(".js"):
+            os.remove(os.path.join(bdir, old))
+    by_board = {}
+    for x in schools.values():
+        if x["board"] != BOARD_NAME:
+            by_board.setdefault(x["board"], []).append(x)
+    total = 0
+    for bname, lst in by_board.items():
+        slug = board_slug(bname)
+        bno = lst[0]["boardNo"]
+        payload = {"board": bname, "ref": board_ref.get(bno, {}), "schools": sorted(lst, key=lambda x: x["name"])}
+        fp = os.path.join(bdir, f"{slug}.js")
+        with open(fp, "w", encoding="utf-8") as f:
+            f.write("/* Generated by tools/build_schools.py -- do not edit by hand. */\n")
+            f.write(f"window.BOARD_DATA = window.BOARD_DATA || {{}};\nwindow.BOARD_DATA[{json.dumps(slug)}] = ")
+            json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+            f.write(";\n")
+        total += os.path.getsize(fp)
+    print(f"wrote {len(by_board)} board files to {bdir} ({total // 1024} KB total)")
     dest = os.path.join(ROOT, "js", "schools.js")
     with open(dest, "w", encoding="utf-8") as f:
         f.write("/* TDSB elementary schools and EQAO results. Sources: EQAO open data; Ontario Ministry of Education,\n"
@@ -305,7 +336,7 @@ def main():
         f.write("window.SCHOOLS = ")
         json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
         f.write(";\n")
-    print(f"wrote {dest}: {len(schools)} schools, years {', '.join(years)} ({os.path.getsize(dest) // 1024} KB)")
+    print(f"wrote {dest}: {len(data['schools'])} schools, years {', '.join(years)} ({os.path.getsize(dest) // 1024} KB)")
 
 
 if __name__ == "__main__":

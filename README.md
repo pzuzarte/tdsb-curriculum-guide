@@ -36,6 +36,7 @@ These files are generated -- don't edit them by hand:
 | File | Source | Command |
 |---|---|---|
 | `js/expectations.en.js`, `js/expectations.fr.js` | Ministry of Education curriculum site (dcp.edu.gov.on.ca) content API | `python3 tools/fetch_expectations.py` |
+| `js/boards/<board>.js` | Same detail as `js/schools.js` for every other Ontario board (one file per board, loaded only when one of its schools is opened or compared) | built by `tools/build_schools.py` |
 | `js/schools-ontario.js` | Same sources, every Ontario elementary school (latest EQAO year, compact rows) for the maps' "All Ontario schools" view | built by `tools/build_schools.py` |
 | `js/schools.js` | Results: [EQAO open data](https://www.eqao.com/about-eqao/open-data/). School list, map locations and context: Ontario open data, [School information and student demographics](https://data.ontario.ca/dataset/school-information-and-student-demographics) | `python3 tools/build_schools.py` (needs `openpyxl`) |
 

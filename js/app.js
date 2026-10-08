@@ -16,7 +16,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261008l"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261008n"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -90,7 +90,10 @@
   // All-Ontario schools (compact rows), loaded only when a map is switched to the Ontario view.
   const needOntario = () => loadScript(`js/schools-ontario.js?v=${ASSET_V}`).then(() => {
     const O = window.SCHOOLS_ON;
-    if (!O._objs) O._objs = O.rows.map(r => ({ id: r[0], name: r[1], board: O.boards[r[2]], fr: !!r[3], grades: r[4], lat: r[5], lon: r[6], lowinc: r[7], r: r.slice(8, 14), tdsb: O.boards[r[2]] === O.tdsb }));
+    if (!O._objs) {
+      O._objs = O.rows.map(r => ({ id: r[0], name: r[1], board: O.boards[r[2]], slug: O.boardSlugs[r[2]], fr: !!r[3], grades: r[4], lat: r[5], lon: r[6], lowinc: r[7], r: r.slice(8, 14), tdsb: O.boards[r[2]] === O.tdsb }));
+      O._byId = Object.fromEntries(O._objs.map(o => [o.id, o]));
+    }
     return O;
   });
   let mapScope = "tdsb"; // remembered while the page is open
@@ -696,7 +699,28 @@
   // SCHOOLS & EQAO
   // ======================================================================
   const latestYear = S => S.years[S.years.length - 1];
-  const schoolById = S => (S._byId = S._byId || Object.fromEntries(S.schools.map(s => [s.id, s])));
+  // School registry: TDSB schools come with schools.js; any other Ontario school is loaded from its board's file on demand.
+  const schoolCache = {};
+  function registerTDSB(S) {
+    if (!S._reg) { S.schools.forEach(s => { s.board = s.board || "Toronto DSB"; s.tdsb = true; schoolCache[s.id] = s; }); S._reg = true; }
+  }
+  const needBoard = slug => loadScript(`js/boards/${slug}.js?v=${ASSET_V}`).then(() => {
+    const B = window.BOARD_DATA[slug];
+    if (!B._reg) { B.schools.forEach(s => { s.boardRef = B.ref; s.tdsb = false; schoolCache[s.id] = s; }); B._reg = true; }
+    return B;
+  });
+  async function ensureSchools(S, ids) {
+    registerTDSB(S);
+    const missing = ids.filter(id => id && !schoolCache[id]);
+    if (!missing.length) return;
+    const O = await needOntario();
+    const slugs = new Set(missing.map(id => O._byId[id]).filter(o => o && !o.tdsb).map(o => o.slug));
+    await Promise.all([...slugs].map(needBoard));
+  }
+  const findSchool = id => schoolCache[id];
+  // Load TDSB data plus whatever boards the given (or compared) schools belong to.
+  const needSchoolsFor = ids => () => needSchools().then(S => ensureSchools(S, (ids || []).concat(getCompare())).then(() => S));
+  const schoolById = S => { registerTDSB(S); return schoolCache; };
   const getCompare = () => getJSON(COMPARE_KEY, []).slice(0, 4);
   const setCompare = ids => setJSON(COMPARE_KEY, ids.slice(0, 4));
   function toggleCompare(id) {
@@ -733,10 +757,12 @@
 
   function compareTray(S) {
     const ids = getCompare(), by = schoolById(S);
+    const O = window.SCHOOLS_ON && window.SCHOOLS_ON._byId;
+    const nameOf = id => (by[id] ? by[id].name : O && O[id] ? O[id].name : null);
     return `<div class="tray card" id="tray">
       <strong>${esc(t("sc.tray", { n: ids.length }))}</strong>
-      ${ids.map((id, i) => by[id] ? `<span class="tray-chip"><span class="sw" style="background:${SERIES[i]}"></span><a href="#/school/${id}">${esc(by[id].name)}</a>
-        <button class="x" data-toggle="${id}" aria-label="${esc(t("sc.remove"))}: ${esc(by[id].name)}">×</button></span>` : "").join("")}
+      ${ids.map((id, i) => nameOf(id) ? `<span class="tray-chip"><span class="sw" style="background:${SERIES[i]}"></span><a href="#/school/${id}">${esc(nameOf(id))}</a>
+        <button class="x" data-toggle="${id}" aria-label="${esc(t("sc.remove"))}: ${esc(nameOf(id))}">×</button></span>` : "").join("")}
       <span class="grow"></span>
       ${ids.length ? `<a class="btn" href="#/compare-schools/${ids.join(",")}">${esc(t("sc.compareBtn"))}</a><button class="btn ghost" data-clear>${esc(t("sc.clear"))}</button>` : ""}
     </div>`;
@@ -833,16 +859,32 @@
       <tbody>${schools.map(s => `<tr><th scope="row">${esc(s.name)}</th>${MEASURES.map((m, i) => cell(s, i)).join("")}</tr>`).join("")}
         <tr class="ref"><th scope="row">${esc(t("sc.typTDSB"))}</th>${ref.tdsb.map(v => `<td>${pctTxt(v)}</td>`).join("")}</tr>
         <tr class="ref"><th scope="row">${esc(t("sc.typON"))}</th>${ref.ontario.map(v => `<td>${pctTxt(v)}</td>`).join("")}</tr>
+        ${[...new Map(schools.filter(s => !s.tdsb && s.boardRef && s.boardRef[year]).map(s => [s.board, s.boardRef[year]])).entries()].map(([b, vals]) =>
+          `<tr class="ref"><th scope="row">${esc(t("sc.boardAll", { b }))}</th>${vals.map(v => `<td>${pctTxt(v)}</td>`).join("")}</tr>`).join("")}
       </tbody></table></div>`;
   }
 
+  // Enrolment-weighted share across all TDSB elementary students (approximate: the Ministry rounds each school's value).
+  function ctxWeighted(S) {
+    if (!S._ctxW) {
+      S._ctxW = {};
+      Object.keys(S.schools[0].ctx).forEach(k => {
+        let num = 0, den = 0;
+        S.schools.forEach(s => { if (s.ctx[k] != null && s.enrol) { num += s.ctx[k] * s.enrol; den += s.enrol; } });
+        S._ctxW[k] = den ? Math.round(num / den * 10) / 10 : null;
+      });
+    }
+    return S._ctxW;
+  }
   function contextTable(S, schools) {
-    const med = ctxMedians(S);
+    const med = ctxMedians(S), wtd = ctxWeighted(S);
+    const fmt1 = v => (v == null ? "--" : (lang === "fr" ? `${String(v).replace(".", ",")} %` : `${v}%`));
     return `<div class="table-wrap"><table class="data">
-      <thead><tr><th></th>${schools.map(s => `<th>${esc(s.name)}</th>`).join("")}<th>${esc(t("sc.typCtx"))}</th></tr></thead>
-      <tbody>${Object.keys(med).map(k => `<tr><th scope="row">${esc(t("ctx." + k))}</th>${schools.map(s => `<td>${pctTxt(s.ctx[k])}</td>`).join("")}<td class="muted">${pctTxt(med[k])}</td></tr>`).join("")}
-        <tr><th scope="row">${esc(t("sc.enrol"))}</th>${schools.map(s => `<td>${s.enrol == null ? "--" : s.enrol}</td>`).join("")}<td class="muted">${median(S.schools.map(s => s.enrol))}</td></tr>
-      </tbody></table></div>`;
+      <thead><tr><th></th>${schools.map(s => `<th>${esc(s.name)}${s.tdsb ? "" : `<br><span class="muted small">${esc(s.board)}</span>`}</th>`).join("")}<th>${esc(t("sc.typCtx"))}</th><th>${esc(t("sc.allCtx"))}</th></tr></thead>
+      <tbody>${Object.keys(med).map(k => `<tr><th scope="row">${esc(t("ctx." + k))}</th>${schools.map(s => `<td>${pctTxt(s.ctx[k])}</td>`).join("")}<td class="muted">${pctTxt(med[k])}</td><td class="muted">${fmt1(wtd[k])}</td></tr>`).join("")}
+        <tr><th scope="row">${esc(t("sc.enrol"))}</th>${schools.map(s => `<td>${s.enrol == null ? "--" : s.enrol}</td>`).join("")}<td class="muted">${median(S.schools.map(s => s.enrol))}</td><td class="muted">--</td></tr>
+      </tbody></table></div>
+      <p class="muted small">${esc(t("sc.ctxNote"))}</p>`;
   }
 
   // ======================================================================
@@ -1091,7 +1133,7 @@
   const bandOf = v => INCOME_BANDS.findIndex(([a, b]) => v >= a && v <= b);
 
   function viewCity() {
-    withData(needSchools, S => {
+    withData(needSchoolsFor([]), S => {
       const st = { mi: 5, year: latestYear(S), sq: 0 };
       const ids = getCompare(), by = schoolById(S);
       const sel = ids.filter(id => by[id]);
@@ -1173,7 +1215,7 @@
           lastMapScope = ontario ? "on" : "tdsb";
           if (ontario) {
             pts.forEach(p => {
-              const hi = p.s.tdsb ? hiIndex(p.s) : -1;
+              const hi = hiIndex(p.s);
               L.circleMarker([p.s.lat, p.s.lon], { radius: hi >= 0 ? 8 : 3.5, weight: hi >= 0 ? 3 : 0.5, color: hi >= 0 ? css(`--s${hi + 1}`) : css("--surface"), fillColor: css("--rb-" + resBin(p.r)), fillOpacity: 0.95 })
                 .bindPopup(() => `<strong>${p.s.tdsb ? `<a href="#/school/${p.s.id}">${esc(p.s.name)}</a>` : esc(p.s.name)}</strong><br>${esc(p.s.board)}<br>${esc(t("city.oddsTip", { s: "", v: pctTxt(p.y), e: pctTxt(Math.round(p.exp)), d: signed(p.r), li: pctTxt(p.x) }).replace(/^\s*--\s*/, ""))}
                   ${p.s.tdsb ? "" : `<br><a href="${eqaoLink(p.s.id)}" target="_blank" rel="noopener">${esc(t("sc.eqaoLink"))} ↗</a>`}`)
@@ -1281,7 +1323,7 @@
 
   function viewSchools(tab) {
     tab = tab === "table" ? "table" : "map";
-    withData(needSchools, S => {
+    withData(needSchoolsFor([]), S => {
       const year = latestYear(S);
       const state = { q: "", sort: "name", dir: 1, near: null };
       main.innerHTML = `<div id="schoolsView">
@@ -1356,10 +1398,9 @@
         document.getElementById("count").textContent = t("sc.showing", { n: rows.length, t: on ? window.SCHOOLS_ON.rows.length : S.schools.length });
         document.getElementById("scopeNote").textContent = on ? t("sc.onNote", { y: yearLabel(window.SCHOOLS_ON.year) }) : "";
         document.getElementById("mapList").innerHTML = on ? rows.slice(0, 24).map(s => `
-          <div class="card school-card">${s.tdsb ? `<a href="#/school/${s.id}"><strong>${esc(s.name)}</strong></a>` : `<strong>${esc(s.name)}</strong>`}
+          <div class="card school-card"><a href="#/school/${s.id}"><strong>${esc(s.name)}</strong></a>
             <div class="muted small">${esc(s.board)} · ${esc(s.grades)}${s.fr ? " · FR" : ""}${state.near ? ` · ${t("sc.km", { d: s._d.toFixed(1) })}` : ""}</div>
-            ${s.tdsb ? `<button class="btn add sm ${ids.includes(s.id) ? "on" : ""}" data-toggle="${s.id}">${ids.includes(s.id) ? "✓ " + esc(t("sc.remove")) : "+ " + esc(t("sc.add"))}</button>`
-              : `<a class="small" href="${eqaoLink(s.id)}" target="_blank" rel="noopener">${esc(t("sc.eqaoLink"))} ↗</a>`}</div>`).join("") : rows.slice(0, 24).map(s => `
+            <button class="btn add sm ${ids.includes(s.id) ? "on" : ""}" data-toggle="${s.id}">${ids.includes(s.id) ? "✓ " + esc(t("sc.remove")) : "+ " + esc(t("sc.add"))}</button></div>`).join("") : rows.slice(0, 24).map(s => `
           <div class="card school-card"><a href="#/school/${s.id}"><strong>${esc(s.name)}</strong></a>
             <div class="muted small">${esc(s.grades)} · ${esc(s.addr)}${state.near ? ` · ${t("sc.km", { d: s._d.toFixed(1) })}` : ""}</div>
             <button class="btn add sm ${ids.includes(s.id) ? "on" : ""}" data-toggle="${s.id}">${ids.includes(s.id) ? "✓ " + esc(t("sc.remove")) : "+ " + esc(t("sc.add"))}</button></div>`).join("");
@@ -1383,14 +1424,14 @@
             if (onMode()) {
               const yr = yearLabel(window.SCHOOLS_ON.year);
               rows.forEach(s => {
-                const ci = s.tdsb ? ids.indexOf(s.id) : -1;
+                const ci = ids.indexOf(s.id);
                 L.circleMarker([s.lat, s.lon], { radius: ci >= 0 ? 8 : s.tdsb ? 4 : 3, weight: ci >= 0 ? 2 : 0.5, color: css("--surface"),
                   fillColor: ci >= 0 ? css(`--s${ci + 1}`) : s.tdsb ? css("--accent") : css("--map-dot"), fillOpacity: 0.9 })
-                  .bindPopup(() => `<strong>${s.tdsb ? `<a href="#/school/${s.id}">${esc(s.name)}</a>` : esc(s.name)}</strong><br>${esc(s.board)} · ${esc(s.grades)}
+                  .bindPopup(() => `<strong><a href="#/school/${s.id}">${esc(s.name)}</a></strong><br>${esc(s.board)} · ${esc(s.grades)}
                     ${s.fr ? `<br><small><em>${esc(t("sc.frNote"))}</em></small>` : ""}
                     <br><small><strong>${yr}</strong><br>${MEASURES.map((mm, i) => `${esc(t("m." + mm))}: ${pctTxt(s.r[i])}`).join("<br>")}</small>
-                    <br>${s.tdsb ? `<button class="btn add sm ${getCompare().includes(s.id) ? "on" : ""}" data-toggle="${s.id}">${getCompare().includes(s.id) ? "✓ " + esc(t("sc.remove")) : "+ " + esc(t("sc.add"))}</button>`
-                      : `<a href="${eqaoLink(s.id)}" target="_blank" rel="noopener">${esc(t("sc.eqaoLink"))} ↗</a>`}`)
+                    <br><button class="btn add sm ${getCompare().includes(s.id) ? "on" : ""}" data-toggle="${s.id}">${getCompare().includes(s.id) ? "✓ " + esc(t("sc.remove")) : "+ " + esc(t("sc.add"))}</button>
+                    ${s.tdsb ? "" : `<br><a class="small" href="${eqaoLink(s.id)}" target="_blank" rel="noopener">${esc(t("sc.eqaoLink"))} ↗</a>`}`)
                   .addTo(layer);
               });
               if (state.near) { if (youMarker) youMarker.remove(); youMarker = L.circleMarker(state.near, { radius: 7, color: "#000", weight: 2, fillColor: "#fff", fillOpacity: 1 }).addTo(map); map.setView(state.near, 13); }
@@ -1462,7 +1503,7 @@
   }
 
   function viewSchool(id) {
-    withData(needSchools, S => {
+    withData(needSchoolsFor([id]), S => {
       const s = schoolById(S)[id];
       if (!s) return notFound();
       const year = latestYear(S);
@@ -1471,8 +1512,9 @@
       const dd = deepDive(S, series);
       main.innerHTML = `
         <p><a href="#/schools">← ${esc(t("sc.h1"))}</a></p>
-        <span class="pill">${esc(t("sc.profile"))} · ${esc(s.grades)}</span>
+        <span class="pill">${esc(t("sc.profile"))} · ${esc(s.board || "Toronto DSB")} · ${esc(s.grades)}</span>
         <h1>🏫 ${esc(s.name)}</h1>
+        ${s.tdsb ? "" : `<div class="note">${esc(t("sc.notTdsb", { b: s.board }))}${s.fr ? " " + esc(t("sc.frNote")) : ""}</div>`}
         <div class="grid grid-3 facts">
           <div><strong>${esc(t("sc.address"))}</strong><br>${esc(s.addr)}, ${esc(s.city)} ${esc(s.postal)}</div>
           <div><strong>${esc(t("sc.enrol"))}</strong><br>${s.enrol == null ? "--" : s.enrol}</div>
@@ -1481,7 +1523,7 @@
         <div class="page-actions">
           <button class="btn add ${ids.includes(id) ? "on" : ""}" id="cmpBtn">${ids.includes(id) ? "✓ " + esc(t("sc.remove")) : "+ " + esc(t("sc.add"))}</button>
           ${ids.length ? `<a class="btn ghost" href="#/compare-schools/${ids.join(",")}">${esc(t("sc.compareBtn"))} (${ids.length})</a>` : ""}
-          <a class="btn ghost" href="#/my-eqao/${id}">🎯 ${esc(t("tool.myeqao")[0])}</a>
+          ${s.tdsb ? `<a class="btn ghost" href="#/my-eqao/${id}">🎯 ${esc(t("tool.myeqao")[0])}</a>` : `<a class="btn ghost" href="${eqaoLink(id)}" target="_blank" rel="noopener">${esc(t("sc.eqaoLink"))} ↗</a>`}
         </div>
         ${caveat(S)}
         <h2>${esc(t("sc.latestH", { y: yearLabel(year) }))}</h2>
@@ -1500,8 +1542,15 @@
     });
   }
 
+  // Choices for "add another school": every Ontario school when the province list is loaded, otherwise TDSB.
+  function addOptions(S) {
+    const O = window.SCHOOLS_ON;
+    return O && O._objs ? O._objs.map(o => ({ id: o.id, label: `${o.name} (${o.board})` })) : S.schools.map(s => ({ id: s.id, label: s.name }));
+  }
+
   function viewCompareSchools(idList) {
-    withData(needSchools, S => {
+    const loader = needSchoolsFor(idList ? idList.split(",") : []);
+    withData(() => loader().then(S => needOntario().then(() => S, () => S)), S => {
       const by = schoolById(S);
       let ids = (idList ? idList.split(",") : getCompare()).filter(x => by[x]).slice(0, 4);
       if (idList) setCompare(ids);
@@ -1519,7 +1568,7 @@
         <div id="trayWrap">${compareTray(S)}</div>
         ${ids.length < 4 ? `<div class="card controls"><label class="grow">${esc(t("sc.addMore"))}
           <input list="schoolNames" id="addSchool" placeholder="${esc(t("me.schoolPh"))}"></label>
-          <datalist id="schoolNames">${S.schools.map(s => `<option value="${esc(s.name)}">`).join("")}</datalist></div>` : ""}
+          <datalist id="schoolNames">${addOptions(S).map(o => `<option value="${esc(o.label)}">`).join("")}</datalist></div>` : ""}
         <h2>${esc(t("sc.latestH", { y: yearLabel(year) }))}</h2>
         <p class="muted">${esc(t("sc.latestP"))}</p>
         <div class="card">${barsChart(S, series, year)}</div>
@@ -1541,7 +1590,7 @@
       });
       const add = document.getElementById("addSchool");
       if (add) add.addEventListener("change", () => {
-        const s = S.schools.find(x => x.name === add.value);
+        const s = addOptions(S).find(x => x.label === add.value);
         if (s && !ids.includes(s.id)) location.hash = `#/compare-schools/${ids.concat(s.id).join(",")}`;
       });
     });
