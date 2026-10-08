@@ -16,7 +16,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261008j"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261008l"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -87,6 +87,17 @@
   }
   const needExp = () => loadScript(`js/expectations.${lang}.js?v=${ASSET_V}`).then(() => window.EXPECTATIONS[lang]);
   const needExplain = () => loadScript(`js/explain.${lang}.js?v=${ASSET_V}`).then(() => window.EXPLAIN[lang]);
+  // All-Ontario schools (compact rows), loaded only when a map is switched to the Ontario view.
+  const needOntario = () => loadScript(`js/schools-ontario.js?v=${ASSET_V}`).then(() => {
+    const O = window.SCHOOLS_ON;
+    if (!O._objs) O._objs = O.rows.map(r => ({ id: r[0], name: r[1], board: O.boards[r[2]], fr: !!r[3], grades: r[4], lat: r[5], lon: r[6], lowinc: r[7], r: r.slice(8, 14), tdsb: O.boards[r[2]] === O.tdsb }));
+    return O;
+  });
+  let mapScope = "tdsb"; // remembered while the page is open
+  const eqaoLink = id => `https://www.eqao.com/results/?orgType=S&mident=${parseInt(id, 10)}&yearnum=20${String(window.SCHOOLS_ON ? window.SCHOOLS_ON.year : "").slice(-2)}`;
+  const scopeToggle = () => `<div class="seg" role="group" aria-label="${esc(t("sc.scopeLabel"))}">
+      <button type="button" data-scope="tdsb" aria-pressed="${mapScope === "tdsb"}">${esc(t("sc.scopeTdsb"))}</button>
+      <button type="button" data-scope="on" aria-pressed="${mapScope === "on"}">${esc(t("sc.scopeOn"))}</button></div>`;
   const needSchools = () => loadScript(`js/schools.js?v=${ASSET_V}`).then(() => window.SCHOOLS);
   const needLeaflet = () => Promise.all([
     loadCss("https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"),
@@ -1101,7 +1112,7 @@
             : esc(t("city.highlightNone"))}</p>
         <section><h2>${esc(t("city.oddsH"))}</h2>${howTo("city.oddsHow")}<div class="card"><div id="cOddsSum" class="small"></div>${resLegend()}<div id="cOdds" class="mount"></div>
           <details class="tv"><summary>${esc(t("city.oddsTable"))}</summary><div id="cOddsTbl"></div></details></div></section>
-        <section><h2>${esc(t("city.mapH"))}</h2>${howTo("city.mapHow")}<div class="card">${resLegend()}<div id="cMap" class="map"></div><p class="muted small">${esc(t("sc.mapNote"))}</p></div></section>
+        <section><h2>${esc(t("city.mapH"))}</h2>${howTo("city.mapHow")}<div class="card">${scopeToggle()}<p class="muted small" id="cMapNote"></p>${resLegend()}<div id="cMap" class="map"></div><p class="muted small">${esc(t("sc.mapNote"))}</p></div></section>
         <section><h2>${esc(t("city.incomeH"))}</h2>${howTo("city.incomeHow")}<div class="card"><div id="cIncLegend"></div><div id="cIncome" class="mount"></div><div id="cIncTbl"></div></div></section>
         <section><h2>${esc(t("city.funnelH"))}</h2>${howTo("city.funnelHow")}<div class="card"><div id="cFunSum" class="small"></div><div id="cFunnel" class="mount"></div></div></section>
         <section><h2>${esc(t("city.groupsH"))}</h2>${howTo("city.groupsHow")}<div class="card"><div class="legend"><span><i class="refkey r1"></i>${esc(t("sc.typTDSB"))}</span><span><i class="refkey r2"></i>${esc(t("sc.typON"))}</span></div><div id="cGroups" class="grid grid-3"></div></div></section>
@@ -1130,19 +1141,46 @@
         const row = p => `<tr><th scope="row"><a href="#/school/${p.s.id}">${esc(p.s.name)}</a></th><td>${pctTxt(p.x)}</td><td>${pctTxt(p.y)}</td><td>${pctTxt(Math.round(p.exp))}</td><td>${signed(p.r)}</td></tr>`;
         document.getElementById("cOddsTbl").innerHTML = `<div class="table-wrap"><table class="data"><thead><tr><th>${esc(t("sc.name"))}</th><th>${esc(t("sc.lowinc"))}</th><th>${esc(m)}</th><th>${esc(t("city.expected"))}</th><th>${esc(t("city.diff"))}</th></tr></thead>
           <tbody>${sorted.map(row).join("")}</tbody></table></div>`;
-        if (mapApi) mapApi(pts);
+        drawCityMap(pts);
+      }
+
+      // Map: TDSB schools vs the TDSB pattern, or every Ontario English-language school vs the Ontario pattern.
+      let lastMapScope = null;
+      function drawCityMap(tdsbPts) {
+        if (!mapApi) return;
+        const note = document.getElementById("cMapNote");
+        if (mapScope !== "on") { note.textContent = ""; mapApi(tdsbPts || expectedFor(S, st.year, st.mi).pts, false); return; }
+        needOntario().then(O => {
+          const pts = O._objs.filter(o => !o.fr && o.lowinc != null && o.r[st.mi] != null).map(o => ({ s: o, x: o.lowinc, y: o.r[st.mi] }));
+          const f = fitLine(pts);
+          pts.forEach(p => { p.exp = f.at(p.x); p.r = p.y - p.exp; });
+          note.textContent = t("city.onMapNote", { y: yearLabel(O.year), n: pts.length.toLocaleString(lang === "fr" ? "fr-CA" : "en-CA") }) + (st.year !== O.year ? " " + t("city.onYearNote", { y: yearLabel(O.year) }) : "");
+          mapApi(pts, true);
+        }).catch(() => { note.textContent = t("loadError"); });
       }
 
       let mapApi = null;
       needLeaflet().then(L => {
         const el = document.getElementById("cMap");
         if (!el || !el.isConnected) return;
-        const map = L.map(el, { scrollWheelZoom: false }).setView([43.7, -79.39], 11);
+        const map = L.map(el, { scrollWheelZoom: false, preferCanvas: true }).setView([43.7, -79.39], 11);
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
         const layer = L.layerGroup().addTo(map);
         const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-        mapApi = pts => {
+        mapApi = (pts, ontario) => {
           layer.clearLayers();
+          if (ontario !== (lastMapScope === "on")) map.setView(ontario ? [43.9, -79.6] : [43.7, -79.39], ontario ? 8 : 11);
+          lastMapScope = ontario ? "on" : "tdsb";
+          if (ontario) {
+            pts.forEach(p => {
+              const hi = p.s.tdsb ? hiIndex(p.s) : -1;
+              L.circleMarker([p.s.lat, p.s.lon], { radius: hi >= 0 ? 8 : 3.5, weight: hi >= 0 ? 3 : 0.5, color: hi >= 0 ? css(`--s${hi + 1}`) : css("--surface"), fillColor: css("--rb-" + resBin(p.r)), fillOpacity: 0.95 })
+                .bindPopup(() => `<strong>${p.s.tdsb ? `<a href="#/school/${p.s.id}">${esc(p.s.name)}</a>` : esc(p.s.name)}</strong><br>${esc(p.s.board)}<br>${esc(t("city.oddsTip", { s: "", v: pctTxt(p.y), e: pctTxt(Math.round(p.exp)), d: signed(p.r), li: pctTxt(p.x) }).replace(/^\s*--\s*/, ""))}
+                  ${p.s.tdsb ? "" : `<br><a href="${eqaoLink(p.s.id)}" target="_blank" rel="noopener">${esc(t("sc.eqaoLink"))} ↗</a>`}`)
+                .addTo(layer);
+            });
+            return;
+          }
           pts.forEach(p => {
             const hi = hiIndex(p.s);
             L.circleMarker([p.s.lat, p.s.lon], { radius: hi >= 0 ? 9 : 6, weight: hi >= 0 ? 3 : 1.5, color: hi >= 0 ? css(`--s${hi + 1}`) : css("--surface"), fillColor: css("--rb-" + resBin(p.r)), fillOpacity: 0.95 })
@@ -1232,7 +1270,11 @@
       document.getElementById("cMeasure").addEventListener("change", ev => { st.mi = +ev.target.value; drawAll(); });
       document.getElementById("cYear").addEventListener("change", ev => { st.year = ev.target.value; drawOdds(); });
       document.getElementById("cSq").addEventListener("change", ev => { st.sq = +ev.target.value; drawSq(); });
-      view.addEventListener("click", ev => { const d = ev.target.closest("[data-href]"); if (d) location.hash = d.dataset.href; });
+      view.addEventListener("click", ev => {
+        const sc = ev.target.closest("[data-scope]");
+        if (sc) { mapScope = sc.dataset.scope; view.querySelectorAll("[data-scope]").forEach(b => b.setAttribute("aria-pressed", String(b === sc))); drawCityMap(); return; }
+        const d = ev.target.closest("[data-href]"); if (d) location.hash = d.dataset.href;
+      });
       drawAll();
     });
   }
@@ -1259,14 +1301,18 @@
           <a href="#/schools/city" style="--c:var(--accent)">📊 ${esc(t("city.tab"))}</a>
         </div>
         <p class="muted small" id="count"></p>
-        ${tab === "map" ? `<div id="map" class="map"></div><p class="muted small">${esc(t("sc.mapNote"))}</p><div id="mapList" class="grid grid-3"></div>`
+        ${tab === "map" ? `${scopeToggle()}<p class="muted small" id="scopeNote"></p>
+          <div id="map" class="map"></div><p class="muted small">${esc(t("sc.mapNote"))}</p><div id="mapList" class="grid grid-3"></div>`
           : `<p class="muted small">${esc(t("sc.sortHint"))} ${esc(t("sc.year"))}: ${yearLabel(year)}.</p><div class="table-wrap" id="tbl"></div>`}
         <p class="muted small">${esc(t("sc.typNote"))}</p></div>`;
       const view = document.getElementById("schoolsView");
 
+      const onMode = () => tab === "map" && mapScope === "on" && window.SCHOOLS_ON;
       const filtered = () => {
         const q = state.q.toLowerCase().replace(/\s+/g, "");
-        let rows = S.schools.filter(s => !q || s.name.toLowerCase().replace(/\s+/g, "").includes(q) || (s.postal || "").toLowerCase().startsWith(q));
+        let rows = onMode()
+          ? window.SCHOOLS_ON._objs.filter(s => !q || s.name.toLowerCase().replace(/\s+/g, "").includes(q) || s.board.toLowerCase().replace(/\s+/g, "").includes(q))
+          : S.schools.filter(s => !q || s.name.toLowerCase().replace(/\s+/g, "").includes(q) || (s.postal || "").toLowerCase().startsWith(q));
         if (state.near) rows = rows.map(s => Object.assign({}, s, { _d: distKm(state.near[0], state.near[1], s.lat, s.lon) }));
         return rows;
       };
@@ -1306,8 +1352,14 @@
         let rows = filtered();
         if (state.near) rows.sort((a, b) => a._d - b._d);
         const ids = getCompare();
-        document.getElementById("count").textContent = t("sc.showing", { n: rows.length, t: S.schools.length });
-        document.getElementById("mapList").innerHTML = rows.slice(0, 24).map(s => `
+        const on = onMode();
+        document.getElementById("count").textContent = t("sc.showing", { n: rows.length, t: on ? window.SCHOOLS_ON.rows.length : S.schools.length });
+        document.getElementById("scopeNote").textContent = on ? t("sc.onNote", { y: yearLabel(window.SCHOOLS_ON.year) }) : "";
+        document.getElementById("mapList").innerHTML = on ? rows.slice(0, 24).map(s => `
+          <div class="card school-card">${s.tdsb ? `<a href="#/school/${s.id}"><strong>${esc(s.name)}</strong></a>` : `<strong>${esc(s.name)}</strong>`}
+            <div class="muted small">${esc(s.board)} · ${esc(s.grades)}${s.fr ? " · FR" : ""}${state.near ? ` · ${t("sc.km", { d: s._d.toFixed(1) })}` : ""}</div>
+            ${s.tdsb ? `<button class="btn add sm ${ids.includes(s.id) ? "on" : ""}" data-toggle="${s.id}">${ids.includes(s.id) ? "✓ " + esc(t("sc.remove")) : "+ " + esc(t("sc.add"))}</button>`
+              : `<a class="small" href="${eqaoLink(s.id)}" target="_blank" rel="noopener">${esc(t("sc.eqaoLink"))} ↗</a>`}</div>`).join("") : rows.slice(0, 24).map(s => `
           <div class="card school-card"><a href="#/school/${s.id}"><strong>${esc(s.name)}</strong></a>
             <div class="muted small">${esc(s.grades)} · ${esc(s.addr)}${state.near ? ` · ${t("sc.km", { d: s._d.toFixed(1) })}` : ""}</div>
             <button class="btn add sm ${ids.includes(s.id) ? "on" : ""}" data-toggle="${s.id}">${ids.includes(s.id) ? "✓ " + esc(t("sc.remove")) : "+ " + esc(t("sc.add"))}</button></div>`).join("");
@@ -1319,14 +1371,36 @@
         try { L = await needLeaflet(); } catch (e) { document.getElementById("map").innerHTML = `<p class="note">${esc(t("sc.mapFail"))}</p>`; return; }
         const el = document.getElementById("map");
         if (!el) return;
-        const map = L.map(el, { scrollWheelZoom: false }).setView([43.7, -79.39], 11);
+        const map = L.map(el, { scrollWheelZoom: false, preferCanvas: true }).setView([43.7, -79.39], 11);
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
         const layer = L.layerGroup().addTo(map);
-        let youMarker = null;
+        let youMarker = null, lastScope = null;
+        const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
         mapApi = {
           update(rows) {
             layer.clearLayers();
             const ids = getCompare();
+            if (onMode()) {
+              const yr = yearLabel(window.SCHOOLS_ON.year);
+              rows.forEach(s => {
+                const ci = s.tdsb ? ids.indexOf(s.id) : -1;
+                L.circleMarker([s.lat, s.lon], { radius: ci >= 0 ? 8 : s.tdsb ? 4 : 3, weight: ci >= 0 ? 2 : 0.5, color: css("--surface"),
+                  fillColor: ci >= 0 ? css(`--s${ci + 1}`) : s.tdsb ? css("--accent") : css("--map-dot"), fillOpacity: 0.9 })
+                  .bindPopup(() => `<strong>${s.tdsb ? `<a href="#/school/${s.id}">${esc(s.name)}</a>` : esc(s.name)}</strong><br>${esc(s.board)} · ${esc(s.grades)}
+                    ${s.fr ? `<br><small><em>${esc(t("sc.frNote"))}</em></small>` : ""}
+                    <br><small><strong>${yr}</strong><br>${MEASURES.map((mm, i) => `${esc(t("m." + mm))}: ${pctTxt(s.r[i])}`).join("<br>")}</small>
+                    <br>${s.tdsb ? `<button class="btn add sm ${getCompare().includes(s.id) ? "on" : ""}" data-toggle="${s.id}">${getCompare().includes(s.id) ? "✓ " + esc(t("sc.remove")) : "+ " + esc(t("sc.add"))}</button>`
+                      : `<a href="${eqaoLink(s.id)}" target="_blank" rel="noopener">${esc(t("sc.eqaoLink"))} ↗</a>`}`)
+                  .addTo(layer);
+              });
+              if (state.near) { if (youMarker) youMarker.remove(); youMarker = L.circleMarker(state.near, { radius: 7, color: "#000", weight: 2, fillColor: "#fff", fillOpacity: 1 }).addTo(map); map.setView(state.near, 13); }
+              else if (rows.length && rows.length < window.SCHOOLS_ON.rows.length) map.fitBounds(rows.map(s => [s.lat, s.lon]), { maxZoom: 14, padding: [20, 20] });
+              else if (lastScope !== "on") map.setView([43.9, -79.6], 8);
+              lastScope = "on";
+              return;
+            }
+            if (lastScope === "on" && !state.near && rows.length === S.schools.length) map.setView([43.7, -79.39], 11);
+            lastScope = "tdsb";
             rows.forEach(s => {
               const ci = ids.indexOf(s.id);
               const m = L.circleMarker([s.lat, s.lon], {
@@ -1364,6 +1438,13 @@
         }, () => { msg.textContent = t("sc.nearErr"); }, { timeout: 10000 });
       });
       view.addEventListener("click", ev => {
+        const sc = ev.target.closest("[data-scope]");
+        if (sc) {
+          mapScope = sc.dataset.scope;
+          view.querySelectorAll("[data-scope]").forEach(b => b.setAttribute("aria-pressed", String(b === sc)));
+          (mapScope === "on" ? needOntario() : Promise.resolve()).then(renderMapList).catch(() => { document.getElementById("scopeNote").textContent = t("loadError"); });
+          return;
+        }
         const sb = ev.target.closest("[data-sort]");
         if (sb) { const k = sb.dataset.sort; state.dir = state.sort === k ? -state.dir : (k === "name" || k === "dist" ? 1 : -1); state.sort = k; renderTable(); return; }
         if (ev.target.closest("[data-clear]")) { setCompare([]); refreshTray(); rerender(); return; }
@@ -1374,7 +1455,9 @@
         const cb = ev.target.closest("input[data-toggle]");
         if (cb) { if (!toggleCompare(cb.dataset.toggle)) cb.checked = false; refreshTray(); }
       });
-      if (tab === "table") renderTable(); else initMap();
+      if (tab === "table") renderTable();
+      else if (mapScope === "on") needOntario().then(initMap, () => { mapScope = "tdsb"; initMap(); });
+      else initMap();
     });
   }
 

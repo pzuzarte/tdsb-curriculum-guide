@@ -479,3 +479,8 @@ svg.viz .dot.rb-p2 { fill: var(--rb-p2); } svg.viz .dot.rb-p1 { fill: var(--rb-p
 .viz-controls { padding: 10px 16px; }
 .hl-line .tray-chip { margin: 2px 4px 2px 0; }
 @media (max-width: 700px) { .viz-controls { position: static; } }
+/* segmented toggle (TDSB / All Ontario) */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; background: var(--surface-2); margin: 4px 0 6px; flex-wrap: wrap; }
+.seg button { border: 0; background: transparent; color: var(--ink-2); font: inherit; font-weight: 600; font-size: .9rem; padding: 6px 14px; border-radius: 999px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.seg button:hover:not([aria-pressed="true"]) { color: var(--ink); }
