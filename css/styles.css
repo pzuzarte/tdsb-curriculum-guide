@@ -371,3 +371,18 @@ details.tv summary { cursor: pointer; font-weight: 600; color: var(--accent); ma
 /* match Leaflet popups to the site theme so their text and buttons stay readable in dark mode */
 .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--surface); color: var(--ink); }
 .leaflet-popup-content a { color: var(--accent); }
+
+/* theme toggle */
+.theme-btn { order: 2; margin-left: 0; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: transparent;
+  color: var(--ink); cursor: pointer; font-size: 1rem; line-height: 1; padding: 0; flex: none; }
+.theme-btn:hover { background: var(--surface-2); }
+.search { order: 1; }
+.lang-btn { order: 3; }
+@media (max-width: 900px) { .theme-btn { order: 0; margin-left: auto; } .lang-btn { margin-left: 0; } }
+@media (max-width: 900px) {
+  .brand { width: 100%; }
+  .menu-btn { order: 1; margin-left: 0; }
+  .theme-btn { order: 2; margin-left: auto; }
+  .lang-btn { order: 3; margin-left: 0; }
+  .search { order: 5; }
+}

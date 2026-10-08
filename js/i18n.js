@@ -1,7 +1,7 @@
 /* Interface text in English and French. Keys ending in _html may contain markup. */
 window.I18N = {
   en: {
-    "skip": "Skip to content", "menu": "Menu", "langSwitch": "Français", "langSwitchLabel": "Voir le site en français",
+    "skip": "Skip to content", "menu": "Menu", "theme.toDark": "Switch to dark mode", "theme.toLight": "Switch to light mode", "langSwitch": "Français", "langSwitchLabel": "Voir le site en français",
     "brand.title": "TDSB Curriculum Guide", "brand.sub": "JK to Grade 6 · for parents",
     "search.label": "Search the guide", "search.ph": "Search (e.g. fractions, EQAO)",
     "nav.overview": "Overview", "nav.grades": "Grades", "nav.subjects": "Subjects", "nav.compare": "Compare grades",
@@ -118,7 +118,7 @@ window.I18N = {
   },
 
   fr: {
-    "skip": "Aller au contenu", "menu": "Menu", "langSwitch": "English", "langSwitchLabel": "View the site in English",
+    "skip": "Aller au contenu", "menu": "Menu", "theme.toDark": "Passer au mode sombre", "theme.toLight": "Passer au mode clair", "langSwitch": "English", "langSwitchLabel": "View the site in English",
     "brand.title": "Guide du curriculum du TDSB", "brand.sub": "Maternelle à la 6e année · pour les parents",
     "search.label": "Rechercher dans le guide", "search.ph": "Rechercher (p. ex. fractions, OQRE)",
     "nav.overview": "Aperçu", "nav.grades": "Années", "nav.subjects": "Matières", "nav.compare": "Comparer des années",

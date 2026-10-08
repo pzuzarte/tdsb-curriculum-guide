@@ -13,9 +13,10 @@
   const COMPARE_KEY = "tdsb-guide-compare";
   const HANDOUT_KEY = "tdsb-guide-handout";
   const MYEQAO_KEY = "tdsb-guide-myeqao";
+  const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261008e"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261008f"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -112,6 +113,7 @@
     document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t(el.dataset.i18n); });
     document.querySelectorAll("[data-i18n-ph]").forEach(el => { el.placeholder = t(el.dataset.i18nPh); });
     document.querySelectorAll("[data-i18n-html]").forEach(el => { el.innerHTML = t(el.dataset.i18nHtml); });
+    updateThemeBtn();
     const lb = document.getElementById("langBtn");
     lb.textContent = t("langSwitch");
     lb.setAttribute("aria-label", t("langSwitchLabel"));
@@ -120,6 +122,26 @@
       D.sources.map(s => `<a href="${s.url}" target="_blank" rel="noopener">${esc(s.name)}</a>`).join(" · ");
     document.getElementById("reviewed").textContent = t("footer.reviewed", { d: D.lastReviewed });
   }
+
+  // ---------- light / dark theme ----------
+  // No saved choice = follow the device setting. Choosing sets data-theme on <html>, which the CSS honours.
+  const darkQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+  const currentTheme = () => document.documentElement.getAttribute("data-theme") || (darkQuery && darkQuery.matches ? "dark" : "light");
+  function updateThemeBtn() {
+    const btn = document.getElementById("themeBtn");
+    const dark = currentTheme() === "dark";
+    btn.firstElementChild.textContent = dark ? "☀️" : "🌙";
+    btn.setAttribute("aria-label", t(dark ? "theme.toLight" : "theme.toDark"));
+    btn.title = t(dark ? "theme.toLight" : "theme.toDark");
+  }
+  function toggleTheme() {
+    const next = currentTheme() === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    setJSON(THEME_KEY, next);
+    updateThemeBtn();
+    if (document.getElementById("map")) route(); // map dot colours are read from CSS when drawn
+  }
+  if (darkQuery && darkQuery.addEventListener) darkQuery.addEventListener("change", updateThemeBtn);
 
   // ---------- tooltip ----------
   const tip = document.createElement("div");
@@ -1140,6 +1162,7 @@
     if (q) location.hash = "#/search/" + encodeURIComponent(q);
   });
   document.getElementById("langBtn").addEventListener("click", () => { setLang(lang === "en" ? "fr" : "en"); route(); });
+  document.getElementById("themeBtn").addEventListener("click", toggleTheme);
   document.addEventListener("click", ev => { if (ev.target.closest("[data-print]")) window.print(); });
 
   setLang(initialLang());
