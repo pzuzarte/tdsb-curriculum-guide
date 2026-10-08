@@ -62,14 +62,6 @@
   const yearLabel = y => (lang === "fr" ? y.replace("-", "-20") : y);
   const pctTxt = v => (v == null ? "--" : (lang === "fr" ? `${v} %` : `${v}%`));
 
-  function currentSchoolYear(d = new Date()) {
-    return d.getMonth() >= 8 ? d.getFullYear() : d.getFullYear() - 1;
-  }
-  function gradeIndexFor(birthYear, schoolYearStart) {
-    return schoolYearStart - birthYear - 4; // 0 = JK, 1 = SK, 2 = Gr 1 ... 7 = Gr 6
-  }
-  const syLabel = y => `${y}-${String(y + 1).slice(2)}`;
-
   const loaded = {};
   function loadScript(src) {
     if (!loaded[src]) {
@@ -154,11 +146,6 @@
   // CURRICULUM VIEWS
   // ======================================================================
   function viewHome() {
-    const sy = currentSchoolYear();
-    const years = [];
-    for (let y = sy - 1; y >= sy - 12; y--) years.push(y);
-    const saved = loadStore().birthYear;
-
     const rows = D.subjects.map(s => `
       <tr>
         <th scope="row"><a href="#/subject/${s.id}"><span class="dot" style="background:${s.color}"></span>${s.icon} ${esc(s.name)}</a></th>
@@ -174,19 +161,10 @@
 
     main.innerHTML = `
       <section class="hero">
-        <div>
-          <span class="pill">${esc(t("home.pill"))}</span>
-          <h1>${esc(t("home.h1"))}</h1>
-          <p class="lead">${esc(t("home.lead"))}</p>
-          ${gradeChips(null)}
-        </div>
-        <div class="card calc">
-          <h3>${esc(t("home.calcTitle"))}</h3>
-          <label for="by">${esc(t("home.calcLabel"))}</label>
-          <div class="row"><select id="by"><option value="">${esc(t("home.choose"))}</option>
-            ${years.map(y => `<option ${saved == y ? "selected" : ""}>${y}</option>`).join("")}</select></div>
-          <div class="calc-out" id="calcOut" aria-live="polite"><p class="muted">${esc(t("home.calcHint"))}</p></div>
-        </div>
+        <span class="pill">${esc(t("home.pill"))}</span>
+        <h1>${esc(t("home.h1"))}</h1>
+        <p class="lead">${esc(t("home.lead"))}</p>
+        ${gradeChips(null)}
       </section>
       <h2>${esc(t("home.glanceH"))}</h2>
       <p class="muted">${esc(t("home.glanceSub"))}</p>
@@ -195,24 +173,6 @@
         <tbody>${rows}</tbody></table></div>
       <h2>${esc(t("home.toolsH"))}</h2>
       <div class="grid grid-3">${tools.map(([h, i, k]) => toolCard(h, i, t(k)[0], t(k)[1])).join("")}</div>`;
-
-    const sel = document.getElementById("by");
-    const render = () => {
-      const by = parseInt(sel.value, 10);
-      if (!by) return;
-      const st = loadStore(); st.birthYear = by; saveStore(st);
-      const idx = gradeIndexFor(by, sy);
-      let headline;
-      if (idx < 0) headline = t("home.startsJK", { y: by + 4 });
-      else if (idx >= D.grades.length) headline = t("home.beyond", { y: syLabel(sy) });
-      else headline = t("home.inYear", { g: D.grades[idx].name, y: syLabel(sy) });
-      const chips = D.grades.map((g, i) => `<a href="#/grade/${g.id}" class="${i === idx ? "now" : ""}">${esc(g.short)}: ${syLabel(by + 4 + i)}</a>`).join("");
-      const go = idx >= 0 && idx < D.grades.length ? `<p><a class="btn" href="#/grade/${D.grades[idx].id}">${esc(t("home.see", { g: D.grades[idx].name }))} →</a></p>` : "";
-      document.getElementById("calcOut").innerHTML = `<div class="big">${esc(headline)}</div>${go}<div class="calc-years">${chips}</div>
-        <p class="muted small">${esc(t("home.calcNote"))}</p>`;
-    };
-    sel.addEventListener("change", render);
-    if (saved) render();
   }
 
   function shortFocus(s, gid) {
@@ -550,8 +510,7 @@
   function viewTracker(gid) {
     const store = loadStore();
     if (!gid) {
-      const idx = store.birthYear ? gradeIndexFor(store.birthYear, currentSchoolYear()) : -1;
-      gid = store.lastGrade || (idx >= 0 && idx < D.grades.length ? D.grades[idx].id : "g1");
+      gid = store.lastGrade || "g1";
     }
     const g = gradeById[gid];
     if (!g) return notFound();
