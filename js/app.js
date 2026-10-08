@@ -16,7 +16,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261008n"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261008o"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -178,6 +178,44 @@
     if (el) { const r = el.getBoundingClientRect(); showTip(el, r.left, r.bottom); }
   });
   document.addEventListener("focusout", () => { tip.hidden = true; });
+
+  // ---------- click card for chart dots (add to compare / open profile) ----------
+  const pop = document.createElement("div");
+  pop.className = "pop card"; pop.hidden = true; pop.setAttribute("role", "dialog");
+  document.body.appendChild(pop);
+  let onCompareChange = null; // set by each schools view to refresh its highlights after a change
+  const closePop = () => { pop.hidden = true; };
+  function popName(sid) {
+    const s = findSchool(sid);
+    if (s) return s.name;
+    const O = window.SCHOOLS_ON;
+    return O && O._byId && O._byId[sid] ? O._byId[sid].name : sid;
+  }
+  function openPop(el, x, y) {
+    const sid = el.dataset.sid, inC = getCompare().includes(sid);
+    pop.innerHTML = `<button type="button" class="x pop-x" aria-label="${esc(t("pop.close"))}">×</button>
+      <strong>${esc(popName(sid))}</strong>
+      ${el.dataset.tip ? `<p class="small muted">${esc(el.dataset.tip)}</p>` : ""}
+      <div class="pop-actions"><button type="button" class="btn add sm ${inC ? "on" : ""}" data-pop-toggle="${sid}">${inC ? "✓ " + esc(t("sc.remove")) : "+ " + esc(t("sc.add"))}</button>
+      <a class="btn ghost sm" href="#/school/${sid}">${esc(t("pop.profile"))}</a></div>`;
+    pop.hidden = false; tip.hidden = true;
+    const r = pop.getBoundingClientRect();
+    let left = x + 10, top = y + 10;
+    if (left + r.width > window.innerWidth - 8) left = Math.max(8, x - r.width - 10);
+    if (top + r.height > window.innerHeight - 8) top = Math.max(8, y - r.height - 10);
+    pop.style.left = left + "px"; pop.style.top = top + "px";
+    pop.querySelector("[data-pop-toggle]").focus({ preventScroll: true });
+  }
+  document.addEventListener("click", ev => {
+    const pt = ev.target.closest("[data-pop-toggle]");
+    if (pt) { if (toggleCompare(pt.dataset.popToggle)) { closePop(); if (onCompareChange) onCompareChange(); } return; }
+    if (ev.target.closest(".pop-x")) { closePop(); return; }
+    const dot = ev.target.closest("svg.viz [data-sid], .strip [data-sid]");
+    if (dot) { openPop(dot, ev.clientX, ev.clientY); return; }
+    if (!ev.target.closest(".pop")) closePop();
+  });
+  document.addEventListener("keydown", ev => { if (ev.key === "Escape") closePop(); });
+  window.addEventListener("scroll", closePop, { passive: true });
 
   // ======================================================================
   // CURRICULUM VIEWS
@@ -753,6 +791,7 @@
     return 2 * R * Math.asin(Math.sqrt(h));
   }
 
+  const addBtn = id => { const on = getCompare().includes(id); return `<button type="button" class="btn add sm ${on ? "on" : ""}" data-toggle="${id}">${on ? "✓ " + esc(t("sc.remove")) : "+ " + esc(t("sc.add"))}</button>`; };
   const caveat = S => `<div class="note">${t("sc.caveat_html", { y: yearLabel(latestYear(S)) })}</div>`;
 
   function compareTray(S) {
@@ -947,13 +986,13 @@
     const y = v => T + (H - T - B) * (1 - (v - o.y0) / (o.y1 - o.y0));
     const xt = o.xTicks.map(v => `<line x1="${x(v)}" x2="${x(v)}" y1="${T}" y2="${H - B}" class="g"/><text x="${x(v)}" y="${H - B + 16}" class="ax" text-anchor="middle">${o.xFmt(v)}</text>`).join("");
     const line = o.fit ? `<line x1="${x(o.x0)}" y1="${y(Math.max(o.y0, Math.min(o.y1, o.fit.at(o.x0))))}" x2="${x(o.x1)}" y2="${y(Math.max(o.y0, Math.min(o.y1, o.fit.at(o.x1))))}" class="fit"/>` : "";
-    const dots = o.pts.filter(p => !p.big).map(p => `<circle cx="${x(p.x).toFixed(1)}" cy="${y(p.y).toFixed(1)}" r="4" class="dot ${p.cls || ""}" data-tip="${esc(p.tip)}" ${p.href ? `data-href="${p.href}"` : ""}/>`).join("");
+    const dots = o.pts.filter(p => !p.big).map(p => `<circle cx="${x(p.x).toFixed(1)}" cy="${y(p.y).toFixed(1)}" r="4" class="dot ${p.cls || ""}" data-tip="${esc(p.tip)}" ${p.sid ? `data-sid="${p.sid}"` : ""}/>`).join("");
     const placed = [];
     const bigs = o.pts.filter(p => p.big).map(p => {
       let cx = x(p.x), cy = y(p.y);
       while (placed.some(q => Math.hypot(q[0] - cx, q[1] - cy) < 12)) cx += 12; // keep identical schools visible
       placed.push([cx, cy]);
-      return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="7.5" class="dot big" style="fill:${p.color}" data-tip="${esc(p.tip)}" data-href="${p.href}"/>`;
+      return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="7.5" class="dot big" style="fill:${p.color}" data-tip="${esc(p.tip)}" data-sid="${p.sid}"/>`;
     }).join("");
     return `<svg width="${w}" height="${H}" viewBox="0 0 ${w} ${H}" class="viz" role="img" aria-label="${esc(o.label)}">
       ${axesY(L, R, w, y, o.yTicks, o.yFmt)}${xt}${o.extra ? o.extra(x, y, H, T, B) : ""}${line}${dots}${bigs}
@@ -1038,14 +1077,14 @@
       const med = medianOf(sorted);
       const below = v => Math.round(100 * sorted.filter(x => x < v).length / sorted.length);
       return `<div class="hb-row ${r.ctx ? "ctxrow" : ""}"><div class="hb-label">${esc(r.label)}</div>
-        <div class="strip">${all.map(o => `<i style="left:${Math.min(100, o.v / max * 100)}%;top:${50 + jitter(o.s.id, 38)}%"></i>`).join("")}
+        <div class="strip">${all.map(o => `<i style="left:${Math.min(100, o.v / max * 100)}%;top:${50 + jitter(o.s.id, 38)}%" data-sid="${o.s.id}" data-tip="${esc(o.s.name)}: ${pctTxt(o.v)}"></i>`).join("")}
           ${r.ctx ? `<span class="hb-ref r2" style="left:${med / max * 100}%" data-tip="${esc(t("sc.typCtx"))}: ${pctTxt(med)}"></span>`
             : (r.ref != null ? `<span class="hb-ref r1" style="left:${r.ref}%" data-tip="${esc(r.refLabel)}: ${pctTxt(r.ref)}"></span>` : "")}
           ${stackDots(series.map(s => ({ s, v: r.val(s.school) })).filter(o => o.v != null).map(o => ({ ...o, pos: Math.min(100, o.v / max * 100) })))
-            .map(o => `<b style="left:${o.pos}%;margin-top:${o.dy - 7}px;background:${o.s.color}" data-tip="${esc(t("viz.stripTip", { s: o.s.label, v: pctTxt(o.v), p: below(o.v) }))}"></b>`).join("")}
+            .map(o => `<b style="left:${o.pos}%;margin-top:${o.dy - 7}px;background:${o.s.color}" data-sid="${o.s.school.id}" data-tip="${esc(t("viz.stripTip", { s: o.s.label, v: pctTxt(o.v), p: below(o.v) }))}"></b>`).join("")}
         </div></div>`;
     }).join("")}${axisRow()}</div>
-    <p class="muted small">${esc(t("viz.stripNote"))}</p>`;
+    <p class="muted small">${esc(t("viz.stripNote"))}</p><p class="muted small click-hint">👆 ${esc(t("viz.clickHint"))}</p>`;
   }
 
   // Schools with the same (or nearly the same) value would hide each other, so stack those dots vertically.
@@ -1135,8 +1174,8 @@
   function viewCity() {
     withData(needSchoolsFor([]), S => {
       const st = { mi: 5, year: latestYear(S), sq: 0 };
-      const ids = getCompare(), by = schoolById(S);
-      const sel = ids.filter(id => by[id]);
+      const by = schoolById(S);
+      let sel = getCompare().filter(id => by[id]);
       main.innerHTML = `<div id="cityView">
         <h1>📊 ${esc(t("city.h1"))}</h1>
         <p class="lead">${esc(t("city.lead"))}</p>
@@ -1150,15 +1189,15 @@
           <label>${esc(t("viz.measure"))}<select id="cMeasure">${measureOptions(st.mi)}</select></label>
           <label>${esc(t("sc.year"))}<select id="cYear">${S.years.slice().reverse().map(y => `<option value="${y}">${yearLabel(y)}</option>`).join("")}</select></label>
         </div>
-        <p class="small muted hl-line">${sel.length ? `${esc(t("city.highlight"))} ${sel.map((id, i) => `<span class="tray-chip"><span class="sw" style="background:${SERIES[i]}"></span>${esc(by[id].name)}</span>`).join(" ")}`
+        <p class="small muted hl-line" id="hlLine">${sel.length ? `${esc(t("city.highlight"))} ${sel.map((id, i) => `<span class="tray-chip"><span class="sw" style="background:${SERIES[i]}"></span>${esc(by[id].name)}</span>`).join(" ")}`
             : esc(t("city.highlightNone"))}</p>
-        <section><h2>${esc(t("city.oddsH"))}</h2>${howTo("city.oddsHow")}<div class="card"><div id="cOddsSum" class="small"></div>${resLegend()}<div id="cOdds" class="mount"></div>
+        <section><h2>${esc(t("city.oddsH"))}</h2>${howTo("city.oddsHow")}<div class="card"><div id="cOddsSum" class="small"></div>${resLegend()}<div id="cOdds" class="mount"></div><p class="muted small click-hint">👆 ${esc(t("viz.clickHint"))}</p>
           <details class="tv"><summary>${esc(t("city.oddsTable"))}</summary><div id="cOddsTbl"></div></details></div></section>
         <section><h2>${esc(t("city.mapH"))}</h2>${howTo("city.mapHow")}<div class="card">${scopeToggle()}<p class="muted small" id="cMapNote"></p>${resLegend()}<div id="cMap" class="map"></div><p class="muted small">${esc(t("sc.mapNote"))}</p></div></section>
         <section><h2>${esc(t("city.incomeH"))}</h2>${howTo("city.incomeHow")}<div class="card"><div id="cIncLegend"></div><div id="cIncome" class="mount"></div><div id="cIncTbl"></div></div></section>
-        <section><h2>${esc(t("city.funnelH"))}</h2>${howTo("city.funnelHow")}<div class="card"><div id="cFunSum" class="small"></div><div id="cFunnel" class="mount"></div></div></section>
+        <section><h2>${esc(t("city.funnelH"))}</h2>${howTo("city.funnelHow")}<div class="card"><div id="cFunSum" class="small"></div><div id="cFunnel" class="mount"></div><p class="muted small click-hint">👆 ${esc(t("viz.clickHint"))}</p></div></section>
         <section><h2>${esc(t("city.groupsH"))}</h2>${howTo("city.groupsHow")}<div class="card"><div class="legend"><span><i class="refkey r1"></i>${esc(t("sc.typTDSB"))}</span><span><i class="refkey r2"></i>${esc(t("sc.typON"))}</span></div><div id="cGroups" class="grid grid-3"></div></div></section>
-        <section><h2>${esc(t("city.sqH"))}</h2>${howTo("city.sqHow")}<div class="card"><div class="controls inline"><label>${esc(t("city.sqItem"))}<select id="cSq"></select></label></div><div id="cSqSum" class="small"></div><div id="cSqChart" class="mount"></div></div></section>
+        <section><h2>${esc(t("city.sqH"))}</h2>${howTo("city.sqHow")}<div class="card"><div class="controls inline"><label>${esc(t("city.sqItem"))}<select id="cSq"></select></label></div><div id="cSqSum" class="small"></div><div id="cSqChart" class="mount"></div><p class="muted small click-hint">👆 ${esc(t("viz.clickHint"))}</p></div></section>
         <p class="muted small">${esc(t("city.method"))}</p>
       </div>`;
 
@@ -1175,7 +1214,7 @@
           xFmt: v => pctTxt(v), yFmt: v => v, xLabel: t("ctx.lowinc"), yLabel: m, fit: f,
           pts: pts.map(p => {
             const hi = hiIndex(p.s);
-            return { x: Math.min(40, p.x + jitter(p.s.id, 1.4)), y: p.y, big: hi >= 0, color: SERIES[hi], cls: "rb-" + resBin(p.r), href: `#/school/${p.s.id}`,
+            return { x: Math.min(40, p.x + jitter(p.s.id, 1.4)), y: p.y, big: hi >= 0, color: SERIES[hi], cls: "rb-" + resBin(p.r), sid: p.s.id,
               tip: t("city.oddsTip", { s: tipName(p.s), v: pctTxt(p.y), e: pctTxt(Math.round(p.exp)), d: signed(p.r), li: pctTxt(p.x) }) };
           })
         }));
@@ -1218,7 +1257,7 @@
               const hi = hiIndex(p.s);
               L.circleMarker([p.s.lat, p.s.lon], { radius: hi >= 0 ? 8 : 3.5, weight: hi >= 0 ? 3 : 0.5, color: hi >= 0 ? css(`--s${hi + 1}`) : css("--surface"), fillColor: css("--rb-" + resBin(p.r)), fillOpacity: 0.95 })
                 .bindPopup(() => `<strong>${p.s.tdsb ? `<a href="#/school/${p.s.id}">${esc(p.s.name)}</a>` : esc(p.s.name)}</strong><br>${esc(p.s.board)}<br>${esc(t("city.oddsTip", { s: "", v: pctTxt(p.y), e: pctTxt(Math.round(p.exp)), d: signed(p.r), li: pctTxt(p.x) }).replace(/^\s*--\s*/, ""))}
-                  ${p.s.tdsb ? "" : `<br><a href="${eqaoLink(p.s.id)}" target="_blank" rel="noopener">${esc(t("sc.eqaoLink"))} ↗</a>`}`)
+                  <br>${addBtn(p.s.id)}${p.s.tdsb ? "" : `<br><a class="small" href="${eqaoLink(p.s.id)}" target="_blank" rel="noopener">${esc(t("sc.eqaoLink"))} ↗</a>`}`)
                 .addTo(layer);
             });
             return;
@@ -1226,7 +1265,8 @@
           pts.forEach(p => {
             const hi = hiIndex(p.s);
             L.circleMarker([p.s.lat, p.s.lon], { radius: hi >= 0 ? 9 : 6, weight: hi >= 0 ? 3 : 1.5, color: hi >= 0 ? css(`--s${hi + 1}`) : css("--surface"), fillColor: css("--rb-" + resBin(p.r)), fillOpacity: 0.95 })
-              .bindPopup(`<strong><a href="#/school/${p.s.id}">${esc(p.s.name)}</a></strong><br>${esc(t("city.oddsTip", { s: "", v: pctTxt(p.y), e: pctTxt(Math.round(p.exp)), d: signed(p.r), li: pctTxt(p.x) }).replace(/^\s*--\s*/, ""))}`)
+              .bindPopup(() => `<strong><a href="#/school/${p.s.id}">${esc(p.s.name)}</a></strong><br>${esc(t("city.oddsTip", { s: "", v: pctTxt(p.y), e: pctTxt(Math.round(p.exp)), d: signed(p.r), li: pctTxt(p.x) }).replace(/^\s*--\s*/, ""))}
+                <br>${addBtn(p.s.id)}`)
               .addTo(layer);
           });
         };
@@ -1267,7 +1307,7 @@
           },
           pts: pts.map(q => { const hi = hiIndex(q.s);
             const cls = q.z > 3 ? "rb-p2" : q.z > 1.96 ? "rb-p1" : q.z < -3 ? "rb-n2" : q.z < -1.96 ? "rb-n1" : "rb-z";
-            return { x: q.n + jitter(q.s.id, 0.4), y: Math.max(-59, Math.min(59, q.d)), big: hi >= 0, color: SERIES[hi], cls, href: `#/school/${q.s.id}`,
+            return { x: q.n + jitter(q.s.id, 0.4), y: Math.max(-59, Math.min(59, q.d)), big: hi >= 0, color: SERIES[hi], cls, sid: q.s.id,
               tip: t("city.funnelTip", { s: q.s.name, d: signed(q.d), n: q.n, y0: yearLabel(y0), y1: yearLabel(y1) }) + (Math.abs(q.z) > 1.96 ? " " + t("city.funnelUnusual") : "") }; })
         }));
       }
@@ -1302,7 +1342,7 @@
         mount(out, w => scatterSVG(w, {
           label: t("city.sqH"), x0: 0, x1: 100, y0: 0, y1: 100, xTicks: [0, 25, 50, 75, 100], yTicks: [0, 25, 50, 75, 100],
           xFmt: v => pctTxt(v), yFmt: v => v, xLabel: t("city.sq." + items[st.sq][0]), yLabel: t("m." + MEASURES[st.mi]) + ` (${yearLabel(yL)})`, fit: f,
-          pts: pts.map(p => { const hi = hiIndex(p.s); return { x: p.x, y: p.y, big: hi >= 0, color: SERIES[hi], cls: "rb-z", href: `#/school/${p.s.id}`,
+          pts: pts.map(p => { const hi = hiIndex(p.s); return { x: p.x, y: p.y, big: hi >= 0, color: SERIES[hi], cls: "rb-z", sid: p.s.id,
             tip: `${p.s.name} -- ${t("city.sq." + items[st.sq][0])}: ${pctTxt(p.x)}; ${t("m." + MEASURES[st.mi])}: ${pctTxt(p.y)}` }; })
         }));
       }
@@ -1312,10 +1352,19 @@
       document.getElementById("cMeasure").addEventListener("change", ev => { st.mi = +ev.target.value; drawAll(); });
       document.getElementById("cYear").addEventListener("change", ev => { st.year = ev.target.value; drawOdds(); });
       document.getElementById("cSq").addEventListener("change", ev => { st.sq = +ev.target.value; drawSq(); });
+      // After a school is added or removed anywhere on this page, refresh the highlights everywhere.
+      onCompareChange = () => {
+        ensureSchools(S, getCompare()).then(() => {
+          sel = getCompare().filter(id => by[id]);
+          document.getElementById("hlLine").innerHTML = sel.length ? `${esc(t("city.highlight"))} ${sel.map((id, i) => `<span class="tray-chip"><span class="sw" style="background:${SERIES[i]}"></span>${esc(by[id].name)}</span>`).join(" ")}` : esc(t("city.highlightNone"));
+          drawAll();
+        });
+      };
       view.addEventListener("click", ev => {
         const sc = ev.target.closest("[data-scope]");
         if (sc) { mapScope = sc.dataset.scope; view.querySelectorAll("[data-scope]").forEach(b => b.setAttribute("aria-pressed", String(b === sc))); drawCityMap(); return; }
-        const d = ev.target.closest("[data-href]"); if (d) location.hash = d.dataset.href;
+        const tg = ev.target.closest("button[data-toggle]");
+        if (tg) { if (toggleCompare(tg.dataset.toggle)) onCompareChange(); }
       });
       drawAll();
     });
@@ -1468,6 +1517,7 @@
       }
 
       const rerender = () => (tab === "table" ? renderTable() : renderMapList());
+      onCompareChange = () => ensureSchools(S, getCompare()).then(() => { refreshTray(); rerender(); });
       document.getElementById("sq").addEventListener("input", ev => { state.q = ev.target.value.trim(); rerender(); });
       document.getElementById("near").addEventListener("click", () => {
         const msg = document.getElementById("nearMsg");
@@ -1539,6 +1589,7 @@
         <p class="muted small">${esc(t("sc.typNote"))}</p>`;
       dd.wire();
       document.getElementById("cmpBtn").onclick = () => { if (toggleCompare(id)) viewSchool(id); };
+      onCompareChange = () => { const y = window.scrollY; viewSchool(id); setTimeout(() => window.scrollTo(0, y), 150); };
     });
   }
 
@@ -1583,6 +1634,7 @@
         ${contextTable(S, schools)}
         <p class="muted small">${esc(t("sc.typNote"))}</p>`;
       dd.wire();
+      onCompareChange = () => { location.hash = `#/compare-schools/${getCompare().join(",")}`; };
       main.querySelector("#trayWrap").addEventListener("click", ev => {
         const tg = ev.target.closest("button[data-toggle]");
         if (tg) { toggleCompare(tg.dataset.toggle); location.hash = `#/compare-schools/${getCompare().join(",")}`; }
@@ -1672,6 +1724,8 @@
 
   function route() {
     renderId++;
+    closePop();
+    onCompareChange = null;
     mounted = [];
     tip.hidden = true;
     const parts = location.hash.replace(/^#\/?/, "").split("/").map(p => { try { return decodeURIComponent(p); } catch (e) { return p; } });

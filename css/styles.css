@@ -484,3 +484,15 @@ svg.viz .dot.rb-p2 { fill: var(--rb-p2); } svg.viz .dot.rb-p1 { fill: var(--rb-p
 .seg button { border: 0; background: transparent; color: var(--ink-2); font: inherit; font-weight: 600; font-size: .9rem; padding: 6px 14px; border-radius: 999px; cursor: pointer; }
 .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
 .seg button:hover:not([aria-pressed="true"]) { color: var(--ink); }
+/* click card for chart dots */
+.pop { position: fixed; z-index: 1100; width: min(320px, calc(100vw - 16px)); padding: 12px 14px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+.pop p { margin: 4px 0 10px; }
+.pop-x { position: absolute; top: 4px; right: 4px; border: 0; background: transparent; color: var(--ink-2); font-size: 1.2rem; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; }
+.pop-x:hover { background: var(--surface-2); }
+.pop strong { display: block; padding-right: 24px; }
+.pop-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.pop-actions .btn.sm { margin-top: 0; }
+.strip i { cursor: pointer; }
+.strip i::after { content: ""; position: absolute; inset: -4px; }
+.strip i:hover { opacity: 1; background: var(--ink); transform: scale(1.6); }
+.strip b { cursor: pointer; }
