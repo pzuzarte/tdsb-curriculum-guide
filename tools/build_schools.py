@@ -38,6 +38,11 @@ SIF_DATASET = "https://data.ontario.ca/api/3/action/package_show?id=d85f68c5-fcb
 
 MEASURES = [("3", "R"), ("3", "W"), ("3", "M"), ("6", "R"), ("6", "W"), ("6", "M")]
 LEVELS = ["L4", "L3", "L2", "L1", "NE1"]
+SUBJ_NAME = {"R": "Read", "W": "Write", "M": "Math"}
+SUBGROUPS = {"boys": "G1", "girls": "G2", "ell": "E1", "sped": "S1"}  # EQAO codes
+# Student questionnaire: share answering "Yes, I agree" (code 3)
+SQ_ITEMS = [("likeRead", "pctR_Interest_LikeRead3"), ("likeMath", "pctM_Interest_LikeMath3"),
+            ("goodReader", "pctR_Confidence_GoodReader3"), ("goodMath", "pctM_Confidence_GoodAtMath3")]
 
 SIF = {
     "board": "Board Name", "num": "School Number", "name": "School Name", "level": "School Level",
@@ -117,12 +122,12 @@ def school_directory():
 
 
 # ---------------------------------------------------------------- EQAO results
-def eqao_files():
+def eqao_files(kind="Achievement-Results"):
     req = urllib.request.Request(EQAO_OPEN_DATA, headers=UA)
     with urllib.request.urlopen(req, timeout=60) as r:
         page = r.read().decode("utf-8", "replace")
     out = {}
-    for url in set(re.findall(r'href="([^"]+Grade-([36])-(\d{4})-(\d{4})-Achievement-Results\.zip)"', page)):
+    for url in set(re.findall(r'href="([^"]+Grade-([36])-(\d{4})-(\d{4})-' + kind + r'\.zip)"', page)):
         u, grade, y1, y2 = url
         out[(f"{y1}-{y2[2:]}", grade)] = u
     return out
@@ -147,9 +152,12 @@ def main():
     years = sorted({y for y, _ in files})
     print("EQAO years:", ", ".join(years))
     reference = {}
-    dist = {}
+    latest = years[-1]
+    extra = {}  # sid -> {"dist": {year: [...]}, "n": {year: [...]}, "sub": {...}, "sq": [...]}
     for year in years:
-        ref = {"tdsb": [None] * 6, "ontario": [None] * 6}
+        ref = {"tdsb": [None] * 6, "ontario": [None] * 6,
+               "dist": {"tdsb": [None] * 6, "ontario": [None] * 6},
+               "sub": {k: {"tdsb": [None] * 6, "ontario": [None] * 6} for k in SUBGROUPS}}
         res = {}
         for grade in ("3", "6"):
             if (year, grade) not in files:
@@ -162,16 +170,29 @@ def main():
                     if g != grade:
                         continue
                     v = pct(r.get(f"pctOverall{subj}_L34"))
+                    levels = [pct(r.get(f"pctOverall{subj}_{lv}")) for lv in LEVELS]
+                    levels = levels if all(x is not None for x in levels) else None
+                    subs = {k: pct(r.get(f"pctOverall{subj}_{code}_L34")) for k, code in SUBGROUPS.items()}
+                    who = None
                     if kind == "P" and lang == "en":
-                        ref["ontario"][i] = v
+                        who = "ontario"
                     elif kind == "B" and r.get("BoardMident") == BOARD_MIDENT:
-                        ref["tdsb"][i] = v
+                        who = "tdsb"
+                    if who:
+                        ref[who][i] = v
+                        ref["dist"][who][i] = levels
+                        for k in SUBGROUPS:
+                            ref["sub"][k][who][i] = subs[k]
                     elif kind == "S" and r.get("BoardMident") == BOARD_MIDENT:
                         sid = (r.get("SchoolMident") or "").strip().zfill(6)
                         suppressed = (r.get("Suppressed") or "0") != "0"
                         res.setdefault(sid, [None] * 6)[i] = None if suppressed else v
-                        if year == years[-1] and not suppressed:
-                            dist.setdefault(sid, [None] * 6)[i] = [pct(r.get(f"pctOverall{subj}_{lv}")) for lv in LEVELS]
+                        ex = extra.setdefault(sid, {"dist": {}, "n": {}, "sub": {k: [None] * 6 for k in SUBGROUPS}})
+                        ex["dist"].setdefault(year, [None] * 6)[i] = None if suppressed else levels
+                        ex["n"].setdefault(year, [None] * 6)[i] = num(r.get(f"cntFullyParticipating_{SUBJ_NAME[subj]}"))
+                        if year == latest and not suppressed:
+                            for k in SUBGROUPS:
+                                ex["sub"][k][i] = subs[k]
         reference[year] = ref
         matched = 0
         for sid, vals in res.items():
@@ -183,6 +204,25 @@ def main():
               f"{f' ({missing} not in the school directory, e.g. new schools)' if missing else ''}; "
               f"TDSB {ref['tdsb']}, Ontario {ref['ontario']}")
 
+    # Student questionnaire (latest year): [g3 likeRead, likeMath, goodReader, goodMath, g6 ...]
+    sq_ref = {"tdsb": [None] * 8, "ontario": [None] * 8}
+    for grade, off in (("3", 0), ("6", 4)):
+        url = eqao_files("Student-Questionnaire-Results").get((latest, grade))
+        if not url:
+            continue
+        for r in read_eqao(fetch(url, f"eqao_sq_g{grade}_{latest}.zip")):
+            lang = r.get("Language") or r.get("Lang")
+            kind = r.get("OrgType")
+            vals = [pct(r.get(col)) for _, col in SQ_ITEMS]
+            if kind == "P" and lang == "en":
+                sq_ref["ontario"][off:off + 4] = vals
+            elif kind == "B" and r.get("BoardMident") == BOARD_MIDENT:
+                sq_ref["tdsb"][off:off + 4] = vals
+            elif kind == "S" and r.get("BoardMident") == BOARD_MIDENT and (r.get("Suppressed") or "0") == "0":
+                sid = (r.get("SchoolMident") or "").strip().zfill(6)
+                extra.setdefault(sid, {"dist": {}, "n": {}, "sub": {}}).setdefault("sq", [None] * 8)[off:off + 4] = vals
+    print(f"questionnaire {latest}: TDSB {sq_ref['tdsb']}, Ontario {sq_ref['ontario']}")
+
     # Why a value is blank: 'nr' = small group not reported, 'na' = school has no students in that grade
     for s in schools.values():
         for year, vals in s["res"].items():
@@ -192,8 +232,14 @@ def main():
                     codes[grade_block] = ["na"] * 3
             if any(codes):
                 s["why"][year] = codes
-        if s["id"] in dist:
-            s["dist"] = dist[s["id"]]
+        ex = extra.get(s["id"])
+        if ex:
+            s["dist"] = ex["dist"]
+            s["n"] = ex["n"]
+            if any(v is not None for vals in ex.get("sub", {}).values() for v in vals):
+                s["sub"] = ex["sub"]
+            if ex.get("sq") and any(v is not None for v in ex["sq"]):
+                s["sq"] = ex["sq"]
 
     data = {
         "built": time.strftime("%Y-%m-%d"),
@@ -203,6 +249,8 @@ def main():
         "years": years,
         "levels": LEVELS,
         "reference": reference,
+        "sqItems": [k for k, _ in SQ_ITEMS],
+        "sqReference": sq_ref,
         "schools": sorted(schools.values(), key=lambda x: x["name"]),
     }
     dest = os.path.join(ROOT, "js", "schools.js")

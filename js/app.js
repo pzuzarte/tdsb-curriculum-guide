@@ -16,7 +16,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261008f"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261008h"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -758,9 +758,9 @@
     return (tv != null ? `<span class="hb-ref r1" style="left:${tv}%" data-tip="${esc(tipT)}"></span>` : "") +
       (ov != null ? `<span class="hb-ref r2" style="left:${ov}%" data-tip="${esc(tipO)}"></span>` : "");
   }
-  function chartLegend(series) {
+  function chartLegend(series, o = {}) {
     return `<div class="legend">${series.map(s => `<span><i class="sw" style="background:${s.color}"></i>${esc(s.label)}</span>`).join("")}
-      <span><i class="refkey r1"></i>${esc(t("sc.typTDSB"))}</span><span><i class="refkey r2"></i>${esc(t("sc.typON"))}</span></div>`;
+      <span><i class="refkey r1"></i>${esc(o.tdsbLabel || t("sc.typTDSB"))}</span>${o.noOntario ? "" : `<span><i class="refkey r2"></i>${esc(t("sc.typON"))}</span>`}</div>`;
   }
 
   // Small-multiple trend lines, one per measure. The COVID gap breaks the line.
@@ -825,6 +825,386 @@
       </tbody></table></div>`;
   }
 
+  // ======================================================================
+  // EQAO ANALYTICS (deeper charts for school comparison and the city overview)
+  // ======================================================================
+  const mean = a => { const v = a.filter(x => x != null); return v.length ? v.reduce((p, c) => p + c, 0) / v.length : null; };
+  const medianOf = a => median(a);
+  const jitter = (id, amp) => ((((parseInt(id, 10) || 1) * 9301 + 49297) % 233280) / 233280 - 0.5) * 2 * amp;
+
+  // Responsive SVG charts: drawn at the container's real width so text stays a readable size.
+  let mounted = [];
+  function mount(el, draw) {
+    if (!el) return;
+    const render = () => { const w = Math.max(260, Math.floor(el.clientWidth)); el.innerHTML = draw(w); };
+    render();
+    mounted.push({ el, render });
+  }
+  let resizeTimer;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { mounted = mounted.filter(m => m.el.isConnected); mounted.forEach(m => m.render()); }, 150);
+  });
+
+  // Least-squares line y = a + b x
+  function fitLine(pts) {
+    const n = pts.length;
+    if (n < 3) return null;
+    const mx = mean(pts.map(p => p.x)), my = mean(pts.map(p => p.y));
+    let sxy = 0, sxx = 0;
+    pts.forEach(p => { sxy += (p.x - mx) * (p.y - my); sxx += (p.x - mx) ** 2; });
+    const b = sxx ? sxy / sxx : 0, a = my - b * mx;
+    return { a, b, at: x => a + b * x };
+  }
+  // Each school's result compared with what is typical for TDSB schools with the same low-income share.
+  function expectedFor(S, year, mi) {
+    const pts = S.schools.filter(s => s.ctx.lowinc != null && s.res[year] && s.res[year][mi] != null)
+      .map(s => ({ s, x: s.ctx.lowinc, y: s.res[year][mi] }));
+    const f = fitLine(pts);
+    if (f) pts.forEach(p => { p.exp = f.at(p.x); p.r = p.y - p.exp; });
+    return { pts, f };
+  }
+  const resBin = r => (r >= 15 ? "p2" : r >= 5 ? "p1" : r > -5 ? "z" : r > -15 ? "n1" : "n2");
+  const signed = v => (v > 0 ? "+" : v < 0 ? "−" : "±") + Math.abs(Math.round(v));
+  function resLegend() {
+    return `<div class="legend">${["p2", "p1", "z", "n1", "n2"].map(b => `<span><i class="sw rb-${b}"></i>${esc(t("viz.res." + b))}</span>`).join("")}</div>`;
+  }
+  function measureOptions(sel) {
+    return MEASURES.map((m, i) => `<option value="${i}" ${i === sel ? "selected" : ""}>${esc(t("m." + m))}</option>`).join("");
+  }
+  const howTo = key => `<p class="howto"><strong>${esc(t("viz.howTo"))}</strong> ${esc(t(key))}</p>`;
+
+  // ---------- generic SVG pieces ----------
+  function axesY(L, R, w, y, ticks, fmt) {
+    return ticks.map(v => `<line x1="${L}" x2="${w - R}" y1="${y(v)}" y2="${y(v)}" class="g"/><text x="${L - 6}" y="${y(v) + 4}" class="ax" text-anchor="end">${fmt(v)}</text>`).join("");
+  }
+  function scatterSVG(w, o) {
+    const H = Math.round(Math.min(440, Math.max(300, w * 0.62)));
+    const L = 44, R = 14, T = 12, B = 44;
+    const x = v => L + (w - L - R) * (v - o.x0) / (o.x1 - o.x0);
+    const y = v => T + (H - T - B) * (1 - (v - o.y0) / (o.y1 - o.y0));
+    const xt = o.xTicks.map(v => `<line x1="${x(v)}" x2="${x(v)}" y1="${T}" y2="${H - B}" class="g"/><text x="${x(v)}" y="${H - B + 16}" class="ax" text-anchor="middle">${o.xFmt(v)}</text>`).join("");
+    const line = o.fit ? `<line x1="${x(o.x0)}" y1="${y(Math.max(o.y0, Math.min(o.y1, o.fit.at(o.x0))))}" x2="${x(o.x1)}" y2="${y(Math.max(o.y0, Math.min(o.y1, o.fit.at(o.x1))))}" class="fit"/>` : "";
+    const dots = o.pts.filter(p => !p.big).map(p => `<circle cx="${x(p.x).toFixed(1)}" cy="${y(p.y).toFixed(1)}" r="4" class="dot ${p.cls || ""}" data-tip="${esc(p.tip)}" ${p.href ? `data-href="${p.href}"` : ""}/>`).join("");
+    const bigs = o.pts.filter(p => p.big).map(p => `<circle cx="${x(p.x).toFixed(1)}" cy="${y(p.y).toFixed(1)}" r="7.5" class="dot big" style="fill:${p.color}" data-tip="${esc(p.tip)}" data-href="${p.href}"/>`).join("");
+    return `<svg width="${w}" height="${H}" viewBox="0 0 ${w} ${H}" class="viz" role="img" aria-label="${esc(o.label)}">
+      ${axesY(L, R, w, y, o.yTicks, o.yFmt)}${xt}${o.extra ? o.extra(x, y, H, T, B) : ""}${line}${dots}${bigs}
+      <text x="${(L + w - R) / 2}" y="${H - 6}" class="axl" text-anchor="middle">${esc(o.xLabel)}</text>
+      <text x="12" y="${(T + H - B) / 2}" class="axl" text-anchor="middle" transform="rotate(-90 12 ${(T + H - B) / 2})">${esc(o.yLabel)}</text>
+    </svg>`;
+  }
+  // Lines over a set of x labels; series: {label, color, cls, vals}
+  function linesSVG(w, o) {
+    const H = o.h || 220, L = 38, R = o.r || 12, T = 12, B = 30;
+    const n = o.xs.length;
+    const x = i => L + (w - L - R) * (n === 1 ? 0.5 : i / (n - 1));
+    const y = v => T + (H - T - B) * (1 - (v - o.y0) / (o.y1 - o.y0));
+    const path = vals => { let d = ""; vals.forEach((v, i) => { if (v == null) return; d += `${d && vals[i - 1] != null ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`; }); return d; };
+    return `<svg width="${w}" height="${H}" viewBox="0 0 ${w} ${H}" class="viz" role="img" aria-label="${esc(o.label || "")}">
+      ${axesY(L, R, w, y, o.yTicks || [0, 50, 100], v => v)}
+      ${o.xs.map((lab, i) => `<text x="${x(i)}" y="${H - 10}" class="ax" text-anchor="${n === 2 ? (i ? "end" : "start") : "middle"}">${esc(lab)}</text>`).join("")}
+      ${o.series.map(s => { const d = path(s.vals); return d ? `<path d="${d}" class="ln ${s.cls || ""}" ${s.color ? `style="stroke:${s.color}"` : ""}/>` : ""; }).join("")}
+      ${o.series.filter(s => !s.noDots).map(s => s.vals.map((v, i) => v == null ? "" :
+        `<circle cx="${x(i)}" cy="${y(v)}" r="${s.cls && s.cls.includes("ref") ? 3 : 4}" class="pt ${s.cls || ""}" ${s.color ? `style="fill:${s.color}"` : ""}/><circle cx="${x(i)}" cy="${y(v)}" r="10" class="hit" data-tip="${esc(s.label)} -- ${esc(o.xs[i])}: ${pctTxt(Math.round(v))}"/>`).join("")).join("")}
+    </svg>`;
+  }
+
+  // ---------- C2: five-year average with range ----------
+  function rangeChart(S, series) {
+    const ys = S.years;
+    const refAvg = MEASURES.map((m, i) => mean(ys.map(y => S.reference[y].tdsb[i])));
+    return `${chartLegend(series, { noOntario: true, tdsbLabel: t("viz.tdsbAvg") })}<div class="rg">${MEASURES.map((m, i) => `
+      <div class="hb-row"><div class="hb-label">${esc(t("m." + m))}</div>
+        <div class="rg-track">${series.map(s => {
+          const vals = ys.map(y => (s.school.res[y] ? s.school.res[y][i] : null)).filter(v => v != null);
+          if (!vals.length) return `<div class="rg-row"><span class="hb-none">${esc(t("sc.noData"))}</span></div>`;
+          const lo = Math.min(...vals), hi = Math.max(...vals), av = mean(vals);
+          const tip = t("viz.rangeTip", { s: s.label, m: t("m." + m), a: pctTxt(Math.round(av)), lo: pctTxt(lo), hi: pctTxt(hi), n: vals.length });
+          return `<div class="rg-row" data-tip="${esc(tip)}"><span class="rg-bar" style="left:${lo}%;width:${Math.max(0.6, hi - lo)}%;background:${s.color}"></span>
+            <span class="rg-dot" style="left:${av}%;background:${s.color}"></span></div>`;
+        }).join("")}
+        ${refAvg[i] != null ? `<span class="hb-ref r1" style="left:${refAvg[i]}%" data-tip="${esc(t("viz.tdsbAvg"))}: ${pctTxt(Math.round(refAvg[i]))}"></span>` : ""}</div>
+      </div>`).join("")}${axisRow()}</div>`;
+  }
+  const axisRow = () => `<div class="hb-axis"><span></span><div>${[0, 25, 50, 75, 100].map(x => `<span style="left:${x}%">${pctTxt(x)}</span>`).join("")}</div></div>`;
+
+  // ---------- C1: level breakdown (diverging around the provincial standard) ----------
+  function levelChart(S, series, year) {
+    const ref = S.reference[year].dist;
+    const rows = mi => [
+      ...series.map(s => ({ label: s.label, color: s.color, d: s.school.dist && s.school.dist[year] ? s.school.dist[year][mi] : null })),
+      { label: t("sc.typTDSB"), d: ref.tdsb[mi], ref: true },
+      { label: t("sc.typON"), d: ref.ontario[mi], ref: true }];
+    const seg = (cls, v, label, who, m) => v ? `<span class="lv ${cls}" style="width:${v}%" data-tip="${esc(who)} -- ${esc(t("m." + m))}: ${esc(label)} ${pctTxt(v)}"></span>` : "";
+    const L = t("me.levels");
+    return `<div class="legend">
+        <span><i class="sw lv-l1"></i>${esc(t("viz.lvBelow1"))}</span><span><i class="sw lv-l2"></i>${esc(L["2"])}</span>
+        <span class="lv-sep">|</span><span><i class="sw lv-l3"></i>${esc(L["3"])}</span><span><i class="sw lv-l4"></i>${esc(L["4"])}</span></div>
+      <div class="lvc">${MEASURES.map((m, mi) => `
+        <div class="lv-block"><div class="lv-title">${esc(t("m." + m))}</div>
+          ${rows(mi).map(r => `<div class="lv-row ${r.ref ? "ref" : ""}">
+            <span class="lv-name">${r.color ? `<i class="sw" style="background:${r.color}"></i>` : ""}${esc(r.label)}</span>
+            ${r.d ? `<div class="lv-bar"><div class="lv-left">${seg("lv-l1", (r.d[3] || 0) + (r.d[4] || 0), t("viz.lvBelow1"), r.label, m)}${seg("lv-l2", r.d[2], L["2"], r.label, m)}</div>
+              <div class="lv-right">${seg("lv-l3", r.d[1], L["3"], r.label, m)}${seg("lv-l4", r.d[0], L["4"], r.label, m)}</div></div>`
+              : `<span class="muted small">${esc(t("sc.nr"))}</span>`}
+          </div>`).join("")}
+        </div>`).join("")}
+        <div class="lv-axis"><span></span><div><span>100%</span><span>50%</span><span class="mid">${esc(t("viz.standard"))}</span><span>50%</span><span>100%</span></div></div>
+      </div>`;
+  }
+
+  // ---------- C4: where each school sits among all TDSB schools ----------
+  function stripChart(S, series, year) {
+    const rows = [...MEASURES.map((m, i) => ({ label: t("m." + m), val: s => (s.res[year] ? s.res[year][i] : null), ref: S.reference[year].tdsb[i], refLabel: t("sc.typTDSB") })),
+      { label: t("ctx.lowinc") + " (0-40%)", val: s => s.ctx.lowinc, max: 40, ctx: true },
+      { label: t("ctx.ell"), val: s => s.ctx.ell, ctx: true }];
+    return `${chartLegend(series, { noOntario: true })}<div class="strips">${rows.map(r => {
+      const max = r.max || 100;
+      const all = S.schools.map(s => ({ s, v: r.val(s) })).filter(o => o.v != null);
+      const sorted = all.map(o => o.v).sort((a, b) => a - b);
+      const med = medianOf(sorted);
+      const below = v => Math.round(100 * sorted.filter(x => x < v).length / sorted.length);
+      return `<div class="hb-row ${r.ctx ? "ctxrow" : ""}"><div class="hb-label">${esc(r.label)}</div>
+        <div class="strip">${all.map(o => `<i style="left:${Math.min(100, o.v / max * 100)}%;top:${50 + jitter(o.s.id, 38)}%"></i>`).join("")}
+          ${r.ctx ? `<span class="hb-ref r2" style="left:${med / max * 100}%" data-tip="${esc(t("sc.typCtx"))}: ${pctTxt(med)}"></span>`
+            : (r.ref != null ? `<span class="hb-ref r1" style="left:${r.ref}%" data-tip="${esc(r.refLabel)}: ${pctTxt(r.ref)}"></span>` : "")}
+          ${series.map(s => { const v = r.val(s.school); return v == null ? "" :
+            `<b style="left:${Math.min(100, v / max * 100)}%;background:${s.color}" data-tip="${esc(t("viz.stripTip", { s: s.label, v: pctTxt(v), p: below(v) }))}"></b>`; }).join("")}
+        </div></div>`;
+    }).join("")}${axisRow()}</div>
+    <p class="muted small">${esc(t("viz.stripNote"))}</p>`;
+  }
+
+  // ---------- C3: subgroups (latest year) ----------
+  function subgroupChart(S, series, mi) {
+    const year = latestYear(S), R = S.reference[year];
+    const rows = [...series.map(s => ({ label: s.label, color: s.color, all: s.school.res[year] ? s.school.res[year][mi] : null, sub: s.school.sub })),
+      { label: t("sc.typTDSB"), color: "var(--ref1)", all: R.tdsb[mi], sub: Object.fromEntries(Object.keys(R.sub).map(k => [k, R.sub[k].tdsb])), ref: true },
+      { label: t("sc.typON"), color: "var(--ref2)", all: R.ontario[mi], sub: Object.fromEntries(Object.keys(R.sub).map(k => [k, R.sub[k].ontario])), ref: true }];
+    const panels = [["girls", "boys"], ["ell", "all"], ["sped", "all"]];
+    const val = (r, k) => (k === "all" ? r.all : (r.sub && r.sub[k] ? r.sub[k][mi] : null));
+    const lab = k => t("viz.sub." + k);
+    return `<div class="sg">${panels.map(([a, b]) => `
+      <div class="sg-panel"><div class="sg-head"><span><i class="mk ma"></i>${esc(lab(a))}</span><span><i class="mk mb"></i>${esc(lab(b))}</span></div>
+        ${rows.map(r => { const va = val(r, a), vb = val(r, b);
+          const tip = `${r.label} -- ${lab(a)}: ${va == null ? t("sc.nr") : pctTxt(va)}; ${lab(b)}: ${vb == null ? t("sc.nr") : pctTxt(vb)}`;
+          const gap = va != null && vb != null ? signed(va - vb) : "";
+          return `<div class="sg-row ${r.ref ? "ref" : ""} ${va == null ? "nr" : ""}" data-tip="${esc(tip)}"><span class="lv-name">${r.ref ? "" : `<i class="sw" style="background:${r.color}"></i>`}${esc(r.label)}</span>
+            <div class="sg-track">${va != null && vb != null ? `<span class="sg-link" style="left:${Math.min(va, vb)}%;width:${Math.abs(va - vb)}%"></span>` : ""}
+              ${vb != null ? `<span class="mk mb" style="left:${vb}%;--c:${r.color}"></span>` : ""}
+              ${va != null ? `<span class="mk ma" style="left:${va}%;--c:${r.color}"></span>` : ""}</div>
+            <span class="sg-note">${va == null ? esc(t("viz.nrShort")) : gap}</span></div>`;
+        }).join("")}
+        ${axisRow().replace("hb-axis", "hb-axis sg-axis")}
+      </div>`).join("")}</div>`;
+  }
+
+  // ---------- C5: Grade 3 class, three years later in Grade 6 ----------
+  function cohortCharts(S, series) {
+    const ys = S.years;
+    if (ys.length < 4) return "";
+    const y3 = ys[ys.length - 4], y6 = ys[ys.length - 1];
+    const xs = [t("viz.g3in", { y: yearLabel(y3) }), t("viz.g6in", { y: yearLabel(y6) })];
+    const ids = [];
+    const html = `${chartLegend(series)}<div class="grid grid-3">${[0, 1, 2].map(k => {
+      const id = `coh${k}`; ids.push(id);
+      return `<figure class="card trend"><figcaption>${esc(t("me.mt")[["r", "w", "m"][k]])}</figcaption><div id="${id}" class="mount"></div></figure>`;
+    }).join("")}</div><p class="muted small">${esc(t("viz.cohortNote", { a: yearLabel(y3), b: yearLabel(y6) }))}</p>`;
+    const draw = () => [0, 1, 2].forEach(k => mount(document.getElementById(ids[k]), w => linesSVG(w, {
+      xs, y0: 0, y1: 100, h: 200, r: 18, label: t("me.mt")[["r", "w", "m"][k]],
+      series: [
+        { label: t("sc.typON"), cls: "ref r2", vals: [S.reference[y3].ontario[k], S.reference[y6].ontario[k + 3]] },
+        { label: t("sc.typTDSB"), cls: "ref r1", vals: [S.reference[y3].tdsb[k], S.reference[y6].tdsb[k + 3]] },
+        ...series.map(s => ({ label: s.label, color: s.color, vals: [s.school.res[y3] ? s.school.res[y3][k] : null, s.school.res[y6] ? s.school.res[y6][k + 3] : null] }))]
+    })));
+    return { html, draw };
+  }
+
+  // Deep-dive sections shared by the school profile and the comparison page.
+  function deepDive(S, series) {
+    const year = latestYear(S);
+    const coh = cohortCharts(S, series);
+    const html = `
+      <h2>${esc(t("viz.rangeH"))}</h2>${howTo("viz.rangeHow")}
+      <div class="card">${rangeChart(S, series)}</div>
+      <h2>${esc(t("viz.levelsH", { y: yearLabel(year) }))}</h2>${howTo("viz.levelsHow")}
+      <div class="card">${levelChart(S, series, year)}</div>
+      <h2>${esc(t("viz.stripH", { y: yearLabel(year) }))}</h2>${howTo("viz.stripHow")}
+      <div class="card">${stripChart(S, series, year)}</div>
+      <h2>${esc(t("viz.subH", { y: yearLabel(year) }))}</h2>${howTo("viz.subHow")}
+      <div class="card"><div class="controls inline"><label>${esc(t("viz.measure"))}<select id="sgMeasure">${measureOptions(5)}</select></label></div>
+        <div id="sgOut">${subgroupChart(S, series, 5)}</div><p class="muted small">${esc(t("viz.subNote"))}</p></div>
+      ${coh ? `<h2>${esc(t("viz.cohortH"))}</h2>${howTo("viz.cohortHow")}${coh.html}` : ""}`;
+    const wire = () => {
+      const sel = document.getElementById("sgMeasure");
+      if (sel) sel.addEventListener("change", () => { document.getElementById("sgOut").innerHTML = subgroupChart(S, series, +sel.value); });
+      if (coh) coh.draw();
+    };
+    return { html, wire };
+  }
+
+  // ---------- city-wide overview ----------
+  const INCOME_BANDS = [[0, 9], [10, 14], [15, 19], [20, 100]];
+  const bandOf = v => INCOME_BANDS.findIndex(([a, b]) => v >= a && v <= b);
+
+  function viewCity() {
+    withData(needSchools, S => {
+      const st = { mi: 5, year: latestYear(S), sq: 0 };
+      const ids = getCompare(), by = schoolById(S);
+      const sel = ids.filter(id => by[id]);
+      main.innerHTML = `<div id="cityView">
+        <h1>📊 ${esc(t("city.h1"))}</h1>
+        <p class="lead">${esc(t("city.lead"))}</p>
+        ${caveat(S)}
+        <div class="subject-tabs" role="tablist">
+          <a href="#/schools/map" style="--c:var(--accent)">🗺️ ${esc(t("sc.map"))}</a>
+          <a href="#/schools/table" style="--c:var(--accent)">📋 ${esc(t("sc.table"))}</a>
+          <a href="#/schools/city" class="active" style="--c:var(--accent)">📊 ${esc(t("city.tab"))}</a>
+        </div>
+        <div class="card controls viz-controls">
+          <label>${esc(t("viz.measure"))}<select id="cMeasure">${measureOptions(st.mi)}</select></label>
+          <label>${esc(t("sc.year"))}<select id="cYear">${S.years.slice().reverse().map(y => `<option value="${y}">${yearLabel(y)}</option>`).join("")}</select></label>
+        </div>
+        <p class="small muted hl-line">${sel.length ? `${esc(t("city.highlight"))} ${sel.map((id, i) => `<span class="tray-chip"><span class="sw" style="background:${SERIES[i]}"></span>${esc(by[id].name)}</span>`).join(" ")}`
+            : esc(t("city.highlightNone"))}</p>
+        <section><h2>${esc(t("city.oddsH"))}</h2>${howTo("city.oddsHow")}<div class="card"><div id="cOddsSum" class="small"></div>${resLegend()}<div id="cOdds" class="mount"></div>
+          <details class="tv"><summary>${esc(t("city.oddsTable"))}</summary><div id="cOddsTbl"></div></details></div></section>
+        <section><h2>${esc(t("city.mapH"))}</h2>${howTo("city.mapHow")}<div class="card">${resLegend()}<div id="cMap" class="map"></div><p class="muted small">${esc(t("sc.mapNote"))}</p></div></section>
+        <section><h2>${esc(t("city.incomeH"))}</h2>${howTo("city.incomeHow")}<div class="card"><div id="cIncLegend"></div><div id="cIncome" class="mount"></div><div id="cIncTbl"></div></div></section>
+        <section><h2>${esc(t("city.funnelH"))}</h2>${howTo("city.funnelHow")}<div class="card"><div id="cFunSum" class="small"></div><div id="cFunnel" class="mount"></div></div></section>
+        <section><h2>${esc(t("city.groupsH"))}</h2>${howTo("city.groupsHow")}<div class="card"><div class="legend"><span><i class="refkey r1"></i>${esc(t("sc.typTDSB"))}</span><span><i class="refkey r2"></i>${esc(t("sc.typON"))}</span></div><div id="cGroups" class="grid grid-3"></div></div></section>
+        <section><h2>${esc(t("city.sqH"))}</h2>${howTo("city.sqHow")}<div class="card"><div class="controls inline"><label>${esc(t("city.sqItem"))}<select id="cSq"></select></label></div><div id="cSqSum" class="small"></div><div id="cSqChart" class="mount"></div></div></section>
+        <p class="muted small">${esc(t("city.method"))}</p>
+      </div>`;
+
+      const tipName = s => s.name;
+      const hiIndex = s => sel.indexOf(s.id);
+
+      function drawOdds() {
+        const { pts, f } = expectedFor(S, st.year, st.mi);
+        const m = t("m." + MEASURES[st.mi]);
+        const above = pts.filter(p => p.r >= 15).length, below = pts.filter(p => p.r <= -15).length;
+        document.getElementById("cOddsSum").innerHTML = f ? esc(t("city.oddsSum", { n: pts.length, a: above, b: below, slope: Math.abs(f.b * 10).toFixed(0) })) : "";
+        mount(document.getElementById("cOdds"), w => scatterSVG(w, {
+          label: t("city.oddsH"), x0: 0, x1: 40, y0: 0, y1: 100, xTicks: [0, 10, 20, 30, 40], yTicks: [0, 25, 50, 75, 100],
+          xFmt: v => pctTxt(v), yFmt: v => v, xLabel: t("ctx.lowinc"), yLabel: m, fit: f,
+          pts: pts.map(p => {
+            const hi = hiIndex(p.s);
+            return { x: Math.min(40, p.x + jitter(p.s.id, 1.4)), y: p.y, big: hi >= 0, color: SERIES[hi], cls: "rb-" + resBin(p.r), href: `#/school/${p.s.id}`,
+              tip: t("city.oddsTip", { s: tipName(p.s), v: pctTxt(p.y), e: pctTxt(Math.round(p.exp)), d: signed(p.r), li: pctTxt(p.x) }) };
+          })
+        }));
+        const sorted = pts.slice().sort((a, b) => b.r - a.r);
+        const row = p => `<tr><th scope="row"><a href="#/school/${p.s.id}">${esc(p.s.name)}</a></th><td>${pctTxt(p.x)}</td><td>${pctTxt(p.y)}</td><td>${pctTxt(Math.round(p.exp))}</td><td>${signed(p.r)}</td></tr>`;
+        document.getElementById("cOddsTbl").innerHTML = `<div class="table-wrap"><table class="data"><thead><tr><th>${esc(t("sc.name"))}</th><th>${esc(t("sc.lowinc"))}</th><th>${esc(m)}</th><th>${esc(t("city.expected"))}</th><th>${esc(t("city.diff"))}</th></tr></thead>
+          <tbody>${sorted.map(row).join("")}</tbody></table></div>`;
+        if (mapApi) mapApi(pts);
+      }
+
+      let mapApi = null;
+      needLeaflet().then(L => {
+        const el = document.getElementById("cMap");
+        if (!el || !el.isConnected) return;
+        const map = L.map(el, { scrollWheelZoom: false }).setView([43.7, -79.39], 11);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
+        const layer = L.layerGroup().addTo(map);
+        const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+        mapApi = pts => {
+          layer.clearLayers();
+          pts.forEach(p => {
+            const hi = hiIndex(p.s);
+            L.circleMarker([p.s.lat, p.s.lon], { radius: hi >= 0 ? 9 : 6, weight: hi >= 0 ? 3 : 1.5, color: hi >= 0 ? css(`--s${hi + 1}`) : css("--surface"), fillColor: css("--rb-" + resBin(p.r)), fillOpacity: 0.95 })
+              .bindPopup(`<strong><a href="#/school/${p.s.id}">${esc(p.s.name)}</a></strong><br>${esc(t("city.oddsTip", { s: "", v: pctTxt(p.y), e: pctTxt(Math.round(p.exp)), d: signed(p.r), li: pctTxt(p.x) }).replace(/^\s*--\s*/, ""))}`)
+              .addTo(layer);
+          });
+        };
+        drawOdds();
+      }).catch(() => { const el = document.getElementById("cMap"); if (el) el.innerHTML = `<p class="note">${esc(t("sc.mapFail"))}</p>`; });
+
+      function drawIncome() {
+        const mi = st.mi, ys = S.years;
+        const series = INCOME_BANDS.map((band, bi) => ({
+          label: t("city.band" + bi), color: `var(--q${bi + 1})`,
+          vals: ys.map(y => medianOf(S.schools.filter(s => s.ctx.lowinc != null && bandOf(s.ctx.lowinc) === bi && s.res[y] && s.res[y][mi] != null).map(s => s.res[y][mi])))
+        }));
+        const counts = INCOME_BANDS.map((b, bi) => S.schools.filter(s => s.ctx.lowinc != null && bandOf(s.ctx.lowinc) === bi).length);
+        document.getElementById("cIncLegend").innerHTML = `<div class="legend">${series.map((s, i) => `<span><i class="sw" style="background:${s.color}"></i>${esc(s.label)} (${counts[i]})</span>`).join("")}</div>`;
+        mount(document.getElementById("cIncome"), w => linesSVG(w, { xs: ys.map(yearLabel), y0: 0, y1: 100, h: 280, series, label: t("city.incomeH"), yTicks: [0, 25, 50, 75, 100] }));
+        const last = series.map(s => s.vals[s.vals.length - 1]);
+        document.getElementById("cIncTbl").innerHTML = `<p class="small"><strong>${esc(t("city.incomeGap", { y: yearLabel(ys[ys.length - 1]), a: pctTxt(last[0]), b: pctTxt(last[3]), d: last[0] != null && last[3] != null ? last[0] - last[3] : "--" }))}</strong></p>
+          <details class="tv"><summary>${esc(t("sc.tableView"))}</summary><div class="table-wrap"><table class="data"><thead><tr><th></th>${ys.map(y => `<th>${yearLabel(y)}</th>`).join("")}</tr></thead>
+          <tbody>${series.map(s => `<tr><th scope="row">${esc(s.label)}</th>${s.vals.map(v => `<td>${pctTxt(v)}</td>`).join("")}</tr>`).join("")}</tbody></table></div></details>`;
+      }
+
+      function drawFunnel() {
+        const ys = S.years, y1 = ys[ys.length - 1], y0 = ys[ys.length - 2], mi = st.mi;
+        const p = (S.reference[y1].tdsb[mi] || 50) / 100;
+        const pts = S.schools.filter(s => s.res[y1] && s.res[y0] && s.res[y1][mi] != null && s.res[y0][mi] != null && s.n && s.n[y1] && s.n[y1][mi])
+          .map(s => { const n = s.n[y1][mi], d = s.res[y1][mi] - s.res[y0][mi], se = 100 * Math.sqrt(2 * p * (1 - p) / n);
+            return { s, n, d, z: d / se }; });
+        const maxN = Math.max(60, ...pts.map(q => q.n));
+        const out95 = pts.filter(q => Math.abs(q.z) > 1.96).length, out99 = pts.filter(q => Math.abs(q.z) > 3).length;
+        document.getElementById("cFunSum").innerHTML = esc(t("city.funnelSum", { n: pts.length, a: out95, b: out99, y0: yearLabel(y0), y1: yearLabel(y1) }));
+        mount(document.getElementById("cFunnel"), w => scatterSVG(w, {
+          label: t("city.funnelH"), x0: 0, x1: maxN, y0: -60, y1: 60, xTicks: Array.from({ length: Math.floor(maxN / 25) + 1 }, (_, i) => i * 25), yTicks: [-60, -30, 0, 30, 60],
+          xFmt: v => v, yFmt: v => (v > 0 ? "+" + v : v), xLabel: t("city.cohort"), yLabel: t("city.change"),
+          extra: (x, y) => {
+            const curve = (k, sign) => { let d = ""; for (let n = 5; n <= maxN; n += 2) { const v = sign * k * 100 * Math.sqrt(2 * p * (1 - p) / n); d += `${d ? "L" : "M"}${x(n).toFixed(1)},${y(Math.max(-60, Math.min(60, v))).toFixed(1)}`; } return d; };
+            return `<line x1="${x(0)}" x2="${x(maxN)}" y1="${y(0)}" y2="${y(0)}" class="zero"/>
+              <path d="${curve(1.96, 1)}" class="fun f95"/><path d="${curve(1.96, -1)}" class="fun f95"/><path d="${curve(3, 1)}" class="fun f99"/><path d="${curve(3, -1)}" class="fun f99"/>`;
+          },
+          pts: pts.map(q => { const hi = hiIndex(q.s);
+            const cls = q.z > 3 ? "rb-p2" : q.z > 1.96 ? "rb-p1" : q.z < -3 ? "rb-n2" : q.z < -1.96 ? "rb-n1" : "rb-z";
+            return { x: q.n + jitter(q.s.id, 0.4), y: Math.max(-59, Math.min(59, q.d)), big: hi >= 0, color: SERIES[hi], cls, href: `#/school/${q.s.id}`,
+              tip: t("city.funnelTip", { s: q.s.name, d: signed(q.d), n: q.n, y0: yearLabel(y0), y1: yearLabel(y1) }) + (Math.abs(q.z) > 1.96 ? " " + t("city.funnelUnusual") : "") }; })
+        }));
+      }
+
+      function drawGroups() {
+        const mi = st.mi, ys = S.years;
+        const groups = [["all", null], ["girls", "girls"], ["boys", "boys"], ["ell", "ell"], ["sped", "sped"]];
+        const box = document.getElementById("cGroups");
+        box.innerHTML = groups.map(([k]) => `<figure class="trend card"><figcaption>${esc(t("viz.sub." + k))}</figcaption><div id="grp-${k}" class="mount"></div></figure>`).join("");
+        groups.forEach(([k, key]) => {
+          const get = who => ys.map(y => (key ? S.reference[y].sub[key][who][mi] : S.reference[y][who][mi]));
+          mount(document.getElementById("grp-" + k), w => linesSVG(w, { xs: ys.map(y => y.slice(2)), y0: 0, y1: 100, h: 190, label: t("viz.sub." + k),
+            series: [{ label: t("sc.typON"), cls: "ref r2", vals: get("ontario") }, { label: t("sc.typTDSB"), cls: "ref r1", vals: get("tdsb") }] }));
+        });
+      }
+
+      function drawSq() {
+        const subj = MEASURES[st.mi][2], grade = MEASURES[st.mi][1];
+        const items = subj === "r" ? [["likeRead", 0], ["goodReader", 2]] : subj === "m" ? [["likeMath", 1], ["goodMath", 3]] : [];
+        const selEl = document.getElementById("cSq");
+        const out = document.getElementById("cSqChart"), sum = document.getElementById("cSqSum");
+        if (!items.length) { selEl.innerHTML = ""; selEl.disabled = true; out.innerHTML = ""; sum.innerHTML = `<p class="muted">${esc(t("city.sqNoWriting"))}</p>`; return; }
+        selEl.disabled = false;
+        if (st.sq > 1) st.sq = 0;
+        selEl.innerHTML = items.map(([k], i) => `<option value="${i}" ${i === st.sq ? "selected" : ""}>${esc(t("city.sq." + k))}</option>`).join("");
+        const off = (grade === "3" ? 0 : 4) + items[st.sq][1];
+        const yL = latestYear(S);
+        const pts = S.schools.filter(s => s.sq && s.sq[off] != null && s.res[yL] && s.res[yL][st.mi] != null).map(s => ({ s, x: s.sq[off], y: s.res[yL][st.mi] }));
+        const f = fitLine(pts);
+        const ref = S.sqReference;
+        sum.innerHTML = esc(t("city.sqSum", { item: t("city.sq." + items[st.sq][0]), t: pctTxt(ref.tdsb[off]), o: pctTxt(ref.ontario[off]), n: pts.length, y: yearLabel(yL) }));
+        mount(out, w => scatterSVG(w, {
+          label: t("city.sqH"), x0: 0, x1: 100, y0: 0, y1: 100, xTicks: [0, 25, 50, 75, 100], yTicks: [0, 25, 50, 75, 100],
+          xFmt: v => pctTxt(v), yFmt: v => v, xLabel: t("city.sq." + items[st.sq][0]), yLabel: t("m." + MEASURES[st.mi]) + ` (${yearLabel(yL)})`, fit: f,
+          pts: pts.map(p => { const hi = hiIndex(p.s); return { x: p.x, y: p.y, big: hi >= 0, color: SERIES[hi], cls: "rb-z", href: `#/school/${p.s.id}`,
+            tip: `${p.s.name} -- ${t("city.sq." + items[st.sq][0])}: ${pctTxt(p.x)}; ${t("m." + MEASURES[st.mi])}: ${pctTxt(p.y)}` }; })
+        }));
+      }
+
+      const drawAll = () => { mounted = []; drawOdds(); drawIncome(); drawFunnel(); drawGroups(); drawSq(); };
+      const view = document.getElementById("cityView");
+      document.getElementById("cMeasure").addEventListener("change", ev => { st.mi = +ev.target.value; drawAll(); });
+      document.getElementById("cYear").addEventListener("change", ev => { st.year = ev.target.value; drawOdds(); });
+      document.getElementById("cSq").addEventListener("change", ev => { st.sq = +ev.target.value; drawSq(); });
+      view.addEventListener("click", ev => { const d = ev.target.closest("[data-href]"); if (d) location.hash = d.dataset.href; });
+      drawAll();
+    });
+  }
+
   function viewSchools(tab) {
     tab = tab === "table" ? "table" : "map";
     withData(needSchools, S => {
@@ -844,6 +1224,7 @@
         <div class="subject-tabs" role="tablist">
           <a href="#/schools/map" class="${tab === "map" ? "active" : ""}" style="--c:var(--accent)">🗺️ ${esc(t("sc.map"))}</a>
           <a href="#/schools/table" class="${tab === "table" ? "active" : ""}" style="--c:var(--accent)">📋 ${esc(t("sc.table"))}</a>
+          <a href="#/schools/city" style="--c:var(--accent)">📊 ${esc(t("city.tab"))}</a>
         </div>
         <p class="muted small" id="count"></p>
         ${tab === "map" ? `<div id="map" class="map"></div><p class="muted small">${esc(t("sc.mapNote"))}</p><div id="mapList" class="grid grid-3"></div>`
@@ -972,6 +1353,7 @@
       const year = latestYear(S);
       const ids = getCompare();
       const series = [{ label: s.name, color: SERIES[0], school: s }];
+      const dd = deepDive(S, series);
       main.innerHTML = `
         <p><a href="#/schools">← ${esc(t("sc.h1"))}</a></p>
         <span class="pill">${esc(t("sc.profile"))} · ${esc(s.grades)}</span>
@@ -993,10 +1375,12 @@
           <details class="tv"><summary>${esc(t("sc.tableView"))}</summary>${resultsTable(S, [s], year)}</details></div>
         <h2>${esc(t("sc.trendH"))}</h2>
         ${trendCharts(S, series)}
+        ${dd.html}
         <h2>${esc(t("sc.contextH"))}</h2>
         <p class="muted">${esc(t("sc.contextP", { y: yearLabel(S.contextYear) }))}</p>
         ${contextTable(S, [s])}
         <p class="muted small">${esc(t("sc.typNote"))}</p>`;
+      dd.wire();
       document.getElementById("cmpBtn").onclick = () => { if (toggleCompare(id)) viewSchool(id); };
     });
   }
@@ -1014,6 +1398,7 @@
       }
       const schools = ids.map(x => by[x]);
       const series = schools.map((s, i) => ({ label: s.name, color: SERIES[i], school: s }));
+      const dd = deepDive(S, series);
       main.innerHTML = `${head}
         ${caveat(S)}
         <div id="trayWrap">${compareTray(S)}</div>
@@ -1027,10 +1412,13 @@
         ${resultsTable(S, schools, year)}
         <h2>${esc(t("sc.trendH"))}</h2>
         ${trendCharts(S, series)}
+        ${dd.html}
+        <p><a class="btn ghost" href="#/schools/city">📊 ${esc(t("city.see"))}</a></p>
         <h2>${esc(t("sc.ctxCompare"))}</h2>
         <p class="muted">${esc(t("sc.contextP", { y: yearLabel(S.contextYear) }))}</p>
         ${contextTable(S, schools)}
         <p class="muted small">${esc(t("sc.typNote"))}</p>`;
+      dd.wire();
       main.querySelector("#trayWrap").addEventListener("click", ev => {
         const tg = ev.target.closest("button[data-toggle]");
         if (tg) { toggleCompare(tg.dataset.toggle); location.hash = `#/compare-schools/${getCompare().join(",")}`; }
@@ -1087,7 +1475,7 @@
             <p>${esc(t("me.levelMeaning")[level])}</p>
             ${s && v != null ? `<p class="muted">${esc(t("me.schoolPct", { s: s.name, p: v, g: gn, m: t("me.m")[m], y: yearLabel(st.year) }))}</p>` : ""}
             ${ref ? `<p class="muted small">${esc(t("me.compareTypical", { t: ref.tdsb[i], o: ref.ontario[i] }))}</p>` : ""}
-            ${s && s.dist && s.dist[i] && st.year === latestYear(S) ? `<p class="muted small">${esc(t("me.dist", { s: s.name, y: yearLabel(st.year), a: s.dist[i][0], b: s.dist[i][1], c: s.dist[i][2], d: s.dist[i][3], e: s.dist[i][4] }))}</p>` : ""}
+            ${s && s.dist && s.dist[st.year] && s.dist[st.year][i] ? (d => `<p class="muted small">${esc(t("me.dist", { s: s.name, y: yearLabel(st.year), a: d[0], b: d[1], c: d[2], d: d[3], e: d[4] }))}</p>`)(s.dist[st.year][i]) : ""}
           </div>`);
         }));
         document.getElementById("meOut").innerHTML = cards.length ? `<div class="grid grid-3">${cards.join("")}</div>` : `<p class="muted">${esc(t("me.empty"))}</p>`;
@@ -1120,6 +1508,7 @@
 
   function route() {
     renderId++;
+    mounted = [];
     tip.hidden = true;
     const parts = location.hash.replace(/^#\/?/, "").split("/").map(p => { try { return decodeURIComponent(p); } catch (e) { return p; } });
     const [page = "", a, b, c] = parts;
@@ -1140,7 +1529,7 @@
       case "tracker": viewTracker(a); break;
       case "glossary": viewGlossary(); break;
       case "search": viewSearch(a || ""); break;
-      case "schools": viewSchools(a); break;
+      case "schools": if (a === "city") viewCity(); else viewSchools(a); break;
       case "school": viewSchool(a); break;
       case "compare-schools": viewCompareSchools(a); break;
       case "my-eqao": viewMyEqao(a); break;

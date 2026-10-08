@@ -13,7 +13,8 @@ Available in **English and French** (language button in the header, or add `?lan
 - **Interview handout** – a printable one-page sheet for parent-teacher interviews
 - **Report card decoder** – letter grades ↔ levels, learning skills, report card timing
 - **Milestones** – EQAO, Grade 3 gifted screening, French Immersion windows, transitions
-- **Schools & EQAO** – map and sortable table of all TDSB elementary schools, school profiles with results over time and school context, side-by-side comparison of up to 4 schools, and a private "my child's EQAO results" explainer
+- **Schools & EQAO** – map and sortable table of all TDSB elementary schools, school profiles, side-by-side comparison of up to 4 schools (five-year averages and ranges, level breakdowns, where each school sits among all TDSB schools, results for girls/boys, English learners and special education, Grade 3 to Grade 6 cohorts), a private "my child's EQAO results" explainer
+- **Toronto overview** – results vs. what's expected given low-income share (scatter, table and map), results by school income level over time, year-to-year change vs. school size (funnel plot), TDSB vs. Ontario by student group, and what students say in EQAO's questionnaire vs. results
 - **Learning tracker** – checklist saved in the browser (localStorage only)
 - **Glossary** and site-wide **search**
 
@@ -41,6 +42,7 @@ After regenerating, bump `ASSET_V` in `js/app.js` and the `?v=` tags in `index.h
 
 **Notes on the data**
 - In French, Math, Science and Health & PE use the Ministry's French text (same expectations). Language, Arts, Social Studies and Kindergarten have French versions written for French-language schools that differ from what TDSB teaches, so the French site shows their official English text with a note. FSL is only published in English.
+- "Expected" results are a straight-line fit of each school's result against its share of children in low-income households, across TDSB schools for that assessment and year. Funnel limits use the TDSB result and each school's number of participating students (approx. 95% and 99.8%). Subgroup and questionnaire data come from the same EQAO files; groups under 10 students are suppressed by EQAO.
 - EQAO school results come from EQAO's open data, 2021-22 onward (EQAO posts each year's files in the fall; rerun the build script to pick up a new year). TDSB and Ontario reference values are EQAO's official all-student results (Ontario = English-language schools). School context (low income, English learners, etc.) comes from the latest Ministry school file, which lags a few years behind.
 
 ## Publish on GitHub Pages
