@@ -16,7 +16,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261008p"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261008q"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -810,6 +810,10 @@
   }
 
   const addBtn = id => { const on = getCompare().includes(id); return `<button type="button" class="btn add sm ${on ? "on" : ""}" data-toggle="${id}">${on ? "✓ " + esc(t("sc.remove")) : "+ " + esc(t("sc.add"))}</button>`; };
+  // Map dots: the same size for every school; touch screens get bigger dots and a wider tap area around each.
+  const isTouch = () => window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(max-width: 700px)").matches;
+  const mapDot = () => (isTouch() ? 7 : 6);
+  const mapTapTolerance = () => (isTouch() ? 12 : 3);
   const isPhone = () => window.matchMedia("(max-width: 700px)").matches;
   const caveat = S => {
     const body = t("sc.caveat_html", { y: yearLabel(latestYear(S)) }).replace(/^<strong>[^<]*<\/strong>\s*/, "");
@@ -1269,7 +1273,7 @@
       needLeaflet().then(L => {
         const el = document.getElementById("cMap");
         if (!el || !el.isConnected) return;
-        const map = L.map(el, { scrollWheelZoom: false, preferCanvas: true }).setView([43.7, -79.39], 11);
+        const map = L.map(el, { scrollWheelZoom: false, renderer: L.canvas({ padding: 0.5, tolerance: mapTapTolerance() }) }).setView([43.7, -79.39], 11);
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
         const layer = L.layerGroup().addTo(map);
         const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -1280,7 +1284,7 @@
           if (ontario) {
             pts.forEach(p => {
               const hi = hiIndex(p.s);
-              L.circleMarker([p.s.lat, p.s.lon], { radius: hi >= 0 ? 8 : 3.5, weight: hi >= 0 ? 3 : 0.5, color: hi >= 0 ? css(`--s${hi + 1}`) : css("--surface"), fillColor: css("--rb-" + resBin(p.r)), fillOpacity: 0.95 })
+              L.circleMarker([p.s.lat, p.s.lon], { radius: hi >= 0 ? 9 : mapDot(), weight: hi >= 0 ? 3 : 1.5, color: hi >= 0 ? css(`--s${hi + 1}`) : css("--surface"), fillColor: css("--rb-" + resBin(p.r)), fillOpacity: 0.95 })
                 .bindPopup(() => `<strong>${p.s.tdsb ? `<a href="#/school/${p.s.id}">${esc(p.s.name)}</a>` : esc(p.s.name)}</strong><br>${esc(p.s.board)}<br>${esc(t("city.oddsTip", { s: "", v: pctTxt(p.y), e: pctTxt(Math.round(p.exp)), d: signed(p.r), li: pctTxt(p.x) }).replace(/^\s*--\s*/, ""))}
                   <br>${addBtn(p.s.id)}${p.s.tdsb ? "" : `<br><a class="small" href="${eqaoLink(p.s.id)}" target="_blank" rel="noopener">${esc(t("sc.eqaoLink"))} ↗</a>`}`)
                 .addTo(layer);
@@ -1289,7 +1293,7 @@
           }
           pts.forEach(p => {
             const hi = hiIndex(p.s);
-            L.circleMarker([p.s.lat, p.s.lon], { radius: hi >= 0 ? 9 : 6, weight: hi >= 0 ? 3 : 1.5, color: hi >= 0 ? css(`--s${hi + 1}`) : css("--surface"), fillColor: css("--rb-" + resBin(p.r)), fillOpacity: 0.95 })
+            L.circleMarker([p.s.lat, p.s.lon], { radius: hi >= 0 ? 9 : mapDot(), weight: hi >= 0 ? 3 : 1.5, color: hi >= 0 ? css(`--s${hi + 1}`) : css("--surface"), fillColor: css("--rb-" + resBin(p.r)), fillOpacity: 0.95 })
               .bindPopup(() => `<strong><a href="#/school/${p.s.id}">${esc(p.s.name)}</a></strong><br>${esc(t("city.oddsTip", { s: "", v: pctTxt(p.y), e: pctTxt(Math.round(p.exp)), d: signed(p.r), li: pctTxt(p.x) }).replace(/^\s*--\s*/, ""))}
                 <br>${addBtn(p.s.id)}`)
               .addTo(layer);
@@ -1489,7 +1493,7 @@
         try { L = await needLeaflet(); } catch (e) { document.getElementById("map").innerHTML = `<p class="note">${esc(t("sc.mapFail"))}</p>`; return; }
         const el = document.getElementById("map");
         if (!el) return;
-        const map = L.map(el, { scrollWheelZoom: false, preferCanvas: true }).setView([43.7, -79.39], 11);
+        const map = L.map(el, { scrollWheelZoom: false, renderer: L.canvas({ padding: 0.5, tolerance: mapTapTolerance() }) }).setView([43.7, -79.39], 11);
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
         const layer = L.layerGroup().addTo(map);
         let youMarker = null, lastScope = null;
@@ -1502,7 +1506,7 @@
               const yr = yearLabel(window.SCHOOLS_ON.year);
               rows.forEach(s => {
                 const ci = ids.indexOf(s.id);
-                L.circleMarker([s.lat, s.lon], { radius: ci >= 0 ? 8 : s.tdsb ? 4 : 3, weight: ci >= 0 ? 2 : 0.5, color: css("--surface"),
+                L.circleMarker([s.lat, s.lon], { radius: ci >= 0 ? 9 : mapDot(), weight: ci >= 0 ? 2 : 1.5, color: css("--surface"),
                   fillColor: ci >= 0 ? css(`--s${ci + 1}`) : s.tdsb ? css("--accent") : css("--map-dot"), fillOpacity: 0.9 })
                   .bindPopup(() => `<strong><a href="#/school/${s.id}">${esc(s.name)}</a></strong><br>${esc(s.board)} · ${esc(s.grades)}
                     ${s.fr ? `<br><small><em>${esc(t("sc.frNote"))}</em></small>` : ""}
@@ -1522,7 +1526,7 @@
             rows.forEach(s => {
               const ci = ids.indexOf(s.id);
               const m = L.circleMarker([s.lat, s.lon], {
-                radius: ci >= 0 ? 9 : 6, weight: 2, color: getComputedStyle(document.documentElement).getPropertyValue("--surface").trim() || "#fff",
+                radius: ci >= 0 ? 9 : mapDot(), weight: 2, color: getComputedStyle(document.documentElement).getPropertyValue("--surface").trim() || "#fff",
                 fillColor: ci >= 0 ? getComputedStyle(document.documentElement).getPropertyValue(`--s${ci + 1}`).trim() : getComputedStyle(document.documentElement).getPropertyValue("--map-dot").trim(),
                 fillOpacity: 0.95
               });
