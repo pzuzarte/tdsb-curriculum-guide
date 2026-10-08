@@ -452,10 +452,10 @@ svg.viz .dot.rb-p2 { fill: var(--rb-p2); } svg.viz .dot.rb-p1 { fill: var(--rb-p
 
 /* strips */
 .strips { display: grid; gap: 10px; }
-.strip { position: relative; height: 34px; border-left: 1px solid var(--line); border-right: 1px solid var(--line);
+.strip { position: relative; height: 44px; border-left: 1px solid var(--line); border-right: 1px solid var(--line);
   background-image: linear-gradient(to right, var(--line) 1px, transparent 1px); background-size: 25% 100%; background-position: -0.5px 0; }
 .strip i { position: absolute; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: var(--ink-2); opacity: .35; }
-.strip b { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; border: 2px solid var(--surface); z-index: 2; }
+.strip b { position: absolute; top: 50%; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; border: 2px solid var(--surface); z-index: 2; }
 .ctxrow .hb-label { color: var(--ink-2); font-weight: 500; }
 .ctxrow { border-top: 1px dashed var(--line); padding-top: 8px; }
 

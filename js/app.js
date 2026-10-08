@@ -16,7 +16,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261008h"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261008j"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -758,6 +758,14 @@
     return (tv != null ? `<span class="hb-ref r1" style="left:${tv}%" data-tip="${esc(tipT)}"></span>` : "") +
       (ov != null ? `<span class="hb-ref r2" style="left:${ov}%" data-tip="${esc(tipO)}"></span>` : "");
   }
+  // Horizontal offsets (px) for points at the same x whose values are close enough to overlap.
+  function dodge(vals, closePts = 4, step = 7) {
+    const idx = vals.map((v, i) => ({ v, i })).filter(o => o.v != null).sort((a, b) => a.v - b.v);
+    const out = vals.map(() => 0), groups = [];
+    idx.forEach(o => { const g = groups[groups.length - 1]; if (g && o.v - g[g.length - 1].v <= closePts) g.push(o); else groups.push([o]); });
+    groups.forEach(g => g.forEach((o, k) => { out[o.i] = (k - (g.length - 1) / 2) * step; }));
+    return out;
+  }
   function chartLegend(series, o = {}) {
     return `<div class="legend">${series.map(s => `<span><i class="sw" style="background:${s.color}"></i>${esc(s.label)}</span>`).join("")}
       <span><i class="refkey r1"></i>${esc(o.tdsbLabel || t("sc.typTDSB"))}</span>${o.noOntario ? "" : `<span><i class="refkey r2"></i>${esc(t("sc.typON"))}</span>`}</div>`;
@@ -793,11 +801,12 @@
           ${years.map((yr, i) => `<text x="${x(i)}" y="${H - 10}" class="ax" text-anchor="middle">${esc(yr.slice(2))}</text>`).join("")}
           ${linePaths(refT, "ref r1")}${linePaths(refO, "ref r2")}
           ${series.map(s => linePaths(years.map(yr => s.school.res[yr] ? s.school.res[yr][mi] : null), "ln", s.color)).join("")}
-          ${series.map(s => years.map((yr, i) => {
-            const v = s.school.res[yr] ? s.school.res[yr][mi] : null;
-            return v == null ? "" : `<circle cx="${x(i)}" cy="${y(v)}" r="4" class="pt" style="fill:${s.color}"/>
-              <circle cx="${x(i)}" cy="${y(v)}" r="10" class="hit" data-tip="${esc(s.label)} -- ${yearLabel(yr)}: ${pctTxt(v)}"/>`;
-          }).join("")).join("")}
+          ${years.map((yr, i) => {
+            const vals = series.map(s => (s.school.res[yr] ? s.school.res[yr][mi] : null));
+            const dx = dodge(vals);
+            return series.map((s, k) => vals[k] == null ? "" : `<circle cx="${x(i) + dx[k]}" cy="${y(vals[k])}" r="4" class="pt" style="fill:${s.color}"/>
+              <circle cx="${x(i) + dx[k]}" cy="${y(vals[k])}" r="9" class="hit" data-tip="${esc(s.label)} -- ${yearLabel(yr)}: ${pctTxt(vals[k])}"/>`).join("");
+          }).join("")}
         </svg></figure>`;
     }).join("")}</div><p class="muted small">${esc(t("sc.trendP"))}</p>`;
   }
@@ -886,7 +895,13 @@
     const xt = o.xTicks.map(v => `<line x1="${x(v)}" x2="${x(v)}" y1="${T}" y2="${H - B}" class="g"/><text x="${x(v)}" y="${H - B + 16}" class="ax" text-anchor="middle">${o.xFmt(v)}</text>`).join("");
     const line = o.fit ? `<line x1="${x(o.x0)}" y1="${y(Math.max(o.y0, Math.min(o.y1, o.fit.at(o.x0))))}" x2="${x(o.x1)}" y2="${y(Math.max(o.y0, Math.min(o.y1, o.fit.at(o.x1))))}" class="fit"/>` : "";
     const dots = o.pts.filter(p => !p.big).map(p => `<circle cx="${x(p.x).toFixed(1)}" cy="${y(p.y).toFixed(1)}" r="4" class="dot ${p.cls || ""}" data-tip="${esc(p.tip)}" ${p.href ? `data-href="${p.href}"` : ""}/>`).join("");
-    const bigs = o.pts.filter(p => p.big).map(p => `<circle cx="${x(p.x).toFixed(1)}" cy="${y(p.y).toFixed(1)}" r="7.5" class="dot big" style="fill:${p.color}" data-tip="${esc(p.tip)}" data-href="${p.href}"/>`).join("");
+    const placed = [];
+    const bigs = o.pts.filter(p => p.big).map(p => {
+      let cx = x(p.x), cy = y(p.y);
+      while (placed.some(q => Math.hypot(q[0] - cx, q[1] - cy) < 12)) cx += 12; // keep identical schools visible
+      placed.push([cx, cy]);
+      return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="7.5" class="dot big" style="fill:${p.color}" data-tip="${esc(p.tip)}" data-href="${p.href}"/>`;
+    }).join("");
     return `<svg width="${w}" height="${H}" viewBox="0 0 ${w} ${H}" class="viz" role="img" aria-label="${esc(o.label)}">
       ${axesY(L, R, w, y, o.yTicks, o.yFmt)}${xt}${o.extra ? o.extra(x, y, H, T, B) : ""}${line}${dots}${bigs}
       <text x="${(L + w - R) / 2}" y="${H - 6}" class="axl" text-anchor="middle">${esc(o.xLabel)}</text>
@@ -904,8 +919,13 @@
       ${axesY(L, R, w, y, o.yTicks || [0, 50, 100], v => v)}
       ${o.xs.map((lab, i) => `<text x="${x(i)}" y="${H - 10}" class="ax" text-anchor="${n === 2 ? (i ? "end" : "start") : "middle"}">${esc(lab)}</text>`).join("")}
       ${o.series.map(s => { const d = path(s.vals); return d ? `<path d="${d}" class="ln ${s.cls || ""}" ${s.color ? `style="stroke:${s.color}"` : ""}/>` : ""; }).join("")}
-      ${o.series.filter(s => !s.noDots).map(s => s.vals.map((v, i) => v == null ? "" :
-        `<circle cx="${x(i)}" cy="${y(v)}" r="${s.cls && s.cls.includes("ref") ? 3 : 4}" class="pt ${s.cls || ""}" ${s.color ? `style="fill:${s.color}"` : ""}/><circle cx="${x(i)}" cy="${y(v)}" r="10" class="hit" data-tip="${esc(s.label)} -- ${esc(o.xs[i])}: ${pctTxt(Math.round(v))}"/>`).join("")).join("")}
+      ${o.xs.map((lab, i) => {
+        const pts = o.series.filter(s => !s.noDots);
+        const dx = dodge(pts.map(s => (s.cls && s.cls.includes("ref") ? null : s.vals[i])), 4, 8);
+        return pts.map((s, k) => { const v = s.vals[i]; if (v == null) return "";
+          const cx = x(i) + (dx[k] || 0);
+          return `<circle cx="${cx}" cy="${y(v)}" r="${s.cls && s.cls.includes("ref") ? 3 : 4}" class="pt ${s.cls || ""}" ${s.color ? `style="fill:${s.color}"` : ""}/><circle cx="${cx}" cy="${y(v)}" r="9" class="hit" data-tip="${esc(s.label)} -- ${esc(lab)}: ${pctTxt(Math.round(v))}"/>`; }).join("");
+      }).join("")}
     </svg>`;
   }
 
@@ -968,11 +988,23 @@
         <div class="strip">${all.map(o => `<i style="left:${Math.min(100, o.v / max * 100)}%;top:${50 + jitter(o.s.id, 38)}%"></i>`).join("")}
           ${r.ctx ? `<span class="hb-ref r2" style="left:${med / max * 100}%" data-tip="${esc(t("sc.typCtx"))}: ${pctTxt(med)}"></span>`
             : (r.ref != null ? `<span class="hb-ref r1" style="left:${r.ref}%" data-tip="${esc(r.refLabel)}: ${pctTxt(r.ref)}"></span>` : "")}
-          ${series.map(s => { const v = r.val(s.school); return v == null ? "" :
-            `<b style="left:${Math.min(100, v / max * 100)}%;background:${s.color}" data-tip="${esc(t("viz.stripTip", { s: s.label, v: pctTxt(v), p: below(v) }))}"></b>`; }).join("")}
+          ${stackDots(series.map(s => ({ s, v: r.val(s.school) })).filter(o => o.v != null).map(o => ({ ...o, pos: Math.min(100, o.v / max * 100) })))
+            .map(o => `<b style="left:${o.pos}%;margin-top:${o.dy - 7}px;background:${o.s.color}" data-tip="${esc(t("viz.stripTip", { s: o.s.label, v: pctTxt(o.v), p: below(o.v) }))}"></b>`).join("")}
         </div></div>`;
     }).join("")}${axisRow()}</div>
     <p class="muted small">${esc(t("viz.stripNote"))}</p>`;
+  }
+
+  // Schools with the same (or nearly the same) value would hide each other, so stack those dots vertically.
+  function stackDots(items, gap = 1.6, step = 11) {
+    const sorted = items.slice().sort((p, q) => p.pos - q.pos);
+    const groups = [];
+    sorted.forEach(o => {
+      const g = groups[groups.length - 1];
+      if (g && o.pos - g[g.length - 1].pos < gap) g.push(o); else groups.push([o]);
+    });
+    groups.forEach(g => g.forEach((o, i) => { o.dy = (i - (g.length - 1) / 2) * step; }));
+    return sorted;
   }
 
   // ---------- C3: subgroups (latest year) ----------
