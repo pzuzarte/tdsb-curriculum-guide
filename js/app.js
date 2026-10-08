@@ -15,7 +15,7 @@
   const MYEQAO_KEY = "tdsb-guide-myeqao";
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261008d"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261008e"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -85,6 +85,7 @@
     return loaded[href];
   }
   const needExp = () => loadScript(`js/expectations.${lang}.js?v=${ASSET_V}`).then(() => window.EXPECTATIONS[lang]);
+  const needExplain = () => loadScript(`js/explain.${lang}.js?v=${ASSET_V}`).then(() => window.EXPLAIN[lang]);
   const needSchools = () => loadScript(`js/schools.js?v=${ASSET_V}`).then(() => window.SCHOOLS);
   const needLeaflet = () => Promise.all([
     loadCss("https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"),
@@ -508,6 +509,9 @@
   }
 
   function viewTracker(gid) {
+    withData(needExplain, X => renderTracker(gid, X));
+  }
+  function renderTracker(gid, X) {
     const store = loadStore();
     if (!gid) {
       gid = store.lastGrade || "g1";
@@ -530,7 +534,7 @@
           <button class="btn ghost" id="resetBtn">${esc(t("tr.reset", { g: g.short }))}</button>
         </div>
       </div>
-      <p class="muted small">${esc(t("tr.saved"))}</p>
+      <p class="muted small">${esc(t("tr.saved"))} ${esc(t("tr.hint"))}</p>
       <div class="grid grid-2" id="trk">
         ${subs.map(s => `
           <div class="card subj" style="--c:${s.color}">
@@ -538,7 +542,13 @@
             <div class="progress" style="--c:${s.color}"><span data-bar="${s.id}"></span></div>
             ${s.grades[gid].learn.map((item, i) => {
               const key = `${gid}.${s.id}.${i}`; // keyed by position so ticks survive a language switch
-              return `<label class="check ${checks[key] ? "done" : ""}"><input type="checkbox" data-key="${key}" ${checks[key] ? "checked" : ""}><span>${esc(item)}</span></label>`;
+              const ex = (X[`${gid}.${s.id}`] || [])[i];
+              const exId = `ex-${s.id}-${i}`;
+              return `<div class="check-row">
+                <label class="check ${checks[key] ? "done" : ""}"><input type="checkbox" data-key="${key}" ${checks[key] ? "checked" : ""}><span>${esc(item)}</span></label>
+                ${ex ? `<button type="button" class="info" aria-expanded="false" aria-controls="${exId}" aria-label="${esc(t("tr.explain"))}: ${esc(item)}">i</button>
+                <div class="explain" id="${exId}" role="note"><strong>${esc(t("tr.means"))}</strong><p>${esc(ex[0])}</p><strong>${esc(t("tr.see"))}</strong><p>${esc(ex[1])}</p></div>` : ""}
+              </div>`;
             }).join("")}
           </div>`).join("")}
       </div>`;
@@ -561,10 +571,23 @@
       cb.closest(".check").classList.toggle("done", cb.checked);
       saveStore(store); update();
     });
+    // Tap/click the info button to pin an explanation open (hover and keyboard focus also show it).
+    const closeAll = except => main.querySelectorAll(".check-row.open").forEach(r => {
+      if (r !== except) { r.classList.remove("open"); r.querySelector(".info").setAttribute("aria-expanded", "false"); }
+    });
+    document.getElementById("trk").addEventListener("click", ev => {
+      const btn = ev.target.closest(".info");
+      if (!btn) return;
+      const row = btn.closest(".check-row");
+      closeAll(row);
+      const open = row.classList.toggle("open");
+      btn.setAttribute("aria-expanded", String(open));
+    });
+    document.getElementById("trk").addEventListener("keydown", ev => { if (ev.key === "Escape") closeAll(null); });
     document.getElementById("resetBtn").addEventListener("click", () => {
       if (!confirm(t("tr.confirm", { g: g.short }))) return;
       Object.keys(checks).forEach(k => { if (k.startsWith(gid + ".")) delete checks[k]; });
-      saveStore(store); viewTracker(gid);
+      saveStore(store); renderTracker(gid, X);
     });
     update();
   }
@@ -852,7 +875,7 @@
         document.getElementById("mapList").innerHTML = rows.slice(0, 24).map(s => `
           <div class="card school-card"><a href="#/school/${s.id}"><strong>${esc(s.name)}</strong></a>
             <div class="muted small">${esc(s.grades)} · ${esc(s.addr)}${state.near ? ` · ${t("sc.km", { d: s._d.toFixed(1) })}` : ""}</div>
-            <button class="btn ghost sm" data-toggle="${s.id}">${ids.includes(s.id) ? "✓ " + esc(t("sc.remove")) : "+ " + esc(t("sc.add"))}</button></div>`).join("");
+            <button class="btn add sm ${ids.includes(s.id) ? "on" : ""}" data-toggle="${s.id}">${ids.includes(s.id) ? "✓ " + esc(t("sc.remove")) : "+ " + esc(t("sc.add"))}</button></div>`).join("");
         if (mapApi) mapApi.update(rows);
       }
 
@@ -879,7 +902,7 @@
               const r = s.res[year] || [];
               m.bindPopup(() => `<strong><a href="#/school/${s.id}">${esc(s.name)}</a></strong><br>${esc(s.grades)} · ${esc(s.addr)}
                 <br><small>${MEASURES.map((mm, i) => `${esc(t("m." + mm))}: ${pctTxt(r[i])}`).join("<br>")}</small>
-                <br><button class="btn ghost sm" data-toggle="${s.id}">${getCompare().includes(s.id) ? "✓ " + esc(t("sc.remove")) : "+ " + esc(t("sc.add"))}</button>`);
+                <br><button class="btn add sm ${getCompare().includes(s.id) ? "on" : ""}" data-toggle="${s.id}">${getCompare().includes(s.id) ? "✓ " + esc(t("sc.remove")) : "+ " + esc(t("sc.add"))}</button>`);
               m.addTo(layer);
             });
             if (state.near) {
@@ -937,7 +960,7 @@
           <div>${s.web ? `<a href="${esc(s.web)}" target="_blank" rel="noopener">${esc(t("sc.website"))} ↗</a><br>` : ""}${s.phone ? `${esc(t("sc.phone"))}: ${esc(s.phone)}` : ""}</div>
         </div>
         <div class="page-actions">
-          <button class="btn ${ids.includes(id) ? "ghost" : ""}" id="cmpBtn">${ids.includes(id) ? "✓ " + esc(t("sc.remove")) : "+ " + esc(t("sc.add"))}</button>
+          <button class="btn add ${ids.includes(id) ? "on" : ""}" id="cmpBtn">${ids.includes(id) ? "✓ " + esc(t("sc.remove")) : "+ " + esc(t("sc.add"))}</button>
           ${ids.length ? `<a class="btn ghost" href="#/compare-schools/${ids.join(",")}">${esc(t("sc.compareBtn"))} (${ids.length})</a>` : ""}
           <a class="btn ghost" href="#/my-eqao/${id}">🎯 ${esc(t("tool.myeqao")[0])}</a>
         </div>

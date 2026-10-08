@@ -26,6 +26,7 @@ python3 -m http.server 8765
 
 ## Edit content
 - Plain-language summaries: [`js/data.js`](js/data.js) (English) and [`js/data.fr.js`](js/data.fr.js) (French). Each subject has an entry per grade (`jk`, `sk`, `g1` … `g6`) with `focus`, `learn`, and `home` lists. Keep both files in the same order -- the tracker keys checkmarks by position.
+- Tracker pop-up explanations: [`js/explain.en.js`](js/explain.en.js) and [`js/explain.fr.js`](js/explain.fr.js) -- one `[what it means, what you might see]` pair per tracker item, in the same order as the `learn` lists.
 - Interface text: [`js/i18n.js`](js/i18n.js).
 
 ## Refresh the generated data

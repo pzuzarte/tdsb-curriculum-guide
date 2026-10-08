@@ -343,3 +343,31 @@ details.tv summary { cursor: pointer; font-weight: 600; color: var(--accent); ma
 .handout input[type=checkbox] { width: 18px; height: 18px; flex: none; margin-top: 3px; padding: 0; accent-color: var(--accent); }
 .ho-focus th { width: 1%; }
 @media (max-width: 900px) { .lang-btn { order: 0; margin-left: auto; } .menu-btn { order: 1; } .search { order: 5; } }
+
+/* tracker explanations */
+.check-row { position: relative; display: flex; align-items: flex-start; gap: 6px; border-bottom: 1px dashed var(--line); }
+.check-row:last-child { border-bottom: 0; }
+.check-row .check { flex: 1; border-bottom: 0; }
+.info { flex: none; margin-top: 8px; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--ink-2); background: transparent;
+  color: var(--ink-2); font: italic 700 .78rem/1 Georgia, serif; cursor: pointer; padding: 0; }
+.info:hover, .check-row.open .info { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.explain { position: absolute; z-index: 30; left: 30px; right: 0; top: calc(100% - 4px); background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line); border-left: 4px solid var(--c, var(--accent)); border-radius: 10px; padding: 10px 14px; box-shadow: 0 8px 24px rgba(0,0,0,.18);
+  font-size: .88rem; visibility: hidden; opacity: 0; transition: opacity .15s ease, visibility 0s linear .15s; }
+.explain strong { font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; color: var(--ink-2); }
+.explain p { margin: 2px 0 8px; }
+.explain p:last-child { margin-bottom: 0; }
+.check-row:hover .explain, .check-row:focus-within .explain, .check-row.open .explain {
+  visibility: visible; opacity: 1; transition: opacity .15s ease .25s, visibility 0s linear .25s; }
+.check-row.open .explain { transition-delay: 0s; }
+@media (hover: none) { .check-row:hover:not(.open) .explain { visibility: hidden; opacity: 0; } }
+@media print { .info, .explain { display: none !important; } }
+
+/* add-to-compare buttons: clear, high-contrast */
+.btn.add { background: transparent; color: var(--accent); border: 2px solid var(--accent); font-weight: 700; }
+.btn.add:hover { background: var(--accent); color: var(--accent-ink); filter: none; }
+.btn.add.on { background: var(--accent); color: var(--accent-ink); }
+.btn.add.on:hover { filter: brightness(1.08); }
+/* match Leaflet popups to the site theme so their text and buttons stay readable in dark mode */
+.leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--surface); color: var(--ink); }
+.leaflet-popup-content a { color: var(--accent); }

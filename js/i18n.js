@@ -71,7 +71,8 @@ window.I18N = {
     "ms.h1": "Key milestones, JK to Grade 6", "ms.lead": "Dates and application windows change each year -- always confirm on the TDSB website or with your school.", "ms.before": "Before school starts",
 
     "tr.h1": "{g} learning tracker", "tr.lead": "Check off things you've seen your child do. This is a conversation starter, not a test -- children develop at different rates, and your child's teacher has the full picture.",
-    "tr.checked": "{d} of {t} checked", "tr.reset": "Reset {g}", "tr.confirm": "Clear all {g} checkmarks on this device?", "tr.saved": "Saved only in this browser on this device. Nothing is sent anywhere.",
+    "tr.checked": "{d} of {t} checked", "tr.reset": "Reset {g}", "tr.confirm": "Clear all {g} checkmarks on this device?", "tr.saved": "Saved only in this browser on this device. Nothing is sent anywhere.", "tr.hint": "Hover over an item, or tap the i button, to see what it means.",
+    "tr.explain": "What does this mean?", "tr.means": "What it means", "tr.see": "What you might see at home",
 
     "gl.h1": "Glossary", "gl.lead": "School and curriculum terms in plain language.", "gl.filter": "Filter terms...",
     "se.h1": "Search results", "se.count": "{n} results for \"{q}\"", "se.none_html": "Try a different word, or browse by <a href=\"#/grade/jk\">grade</a> or <a href=\"#/subject/lang\">subject</a>.",
@@ -189,7 +190,8 @@ window.I18N = {
     "ms.h1": "Étapes clés, de la maternelle à la 6e année", "ms.lead": "Les dates et périodes de demande changent chaque année -- vérifiez toujours sur le site du TDSB ou auprès de votre école.", "ms.before": "Avant l'entrée à l'école",
 
     "tr.h1": "Suivi des apprentissages : {g}", "tr.lead": "Cochez ce que vous avez vu votre enfant faire. C'est un point de départ pour la conversation, pas un test -- chaque enfant se développe à son rythme, et l'enseignante ou l'enseignant a le portrait complet.",
-    "tr.checked": "{d} sur {t} cochés", "tr.reset": "Réinitialiser : {g}", "tr.confirm": "Effacer toutes les coches ({g}) sur cet appareil?", "tr.saved": "Enregistré seulement dans ce navigateur, sur cet appareil. Rien n'est envoyé.",
+    "tr.checked": "{d} sur {t} cochés", "tr.reset": "Réinitialiser : {g}", "tr.confirm": "Effacer toutes les coches ({g}) sur cet appareil?", "tr.saved": "Enregistré seulement dans ce navigateur, sur cet appareil. Rien n'est envoyé.", "tr.hint": "Survolez un élément ou touchez le bouton i pour voir ce qu'il signifie.",
+    "tr.explain": "Qu'est-ce que cela signifie?", "tr.means": "Ce que cela signifie", "tr.see": "Ce que vous pourriez voir à la maison",
 
     "gl.h1": "Glossaire", "gl.lead": "Les termes scolaires expliqués simplement.", "gl.filter": "Filtrer les termes...",
     "se.h1": "Résultats de recherche", "se.count": "{n} résultats pour « {q} »", "se.none_html": "Essayez un autre mot, ou parcourez par <a href=\"#/grade/jk\">année</a> ou par <a href=\"#/subject/lang\">matière</a>.",
