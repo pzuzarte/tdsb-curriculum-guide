@@ -152,6 +152,68 @@ def read_eqao(zpath):
     return merged.values()
 
 
+CLASS_SIZE = "https://data.ontario.ca/api/3/action/package_show?id=elementary-class-size"
+
+
+def _norm(x):
+    x = (x or "").lower().replace("&", "and").replace("st.", "saint").replace("st ", "saint ")
+    return re.sub(r"[^a-z0-9]+", "", x)
+
+
+def class_sizes(schools):
+    """Attach the latest elementary class-size summary (Ontario open data) to each school as s['cls']."""
+    with urllib.request.urlopen(urllib.request.Request(CLASS_SIZE, headers=UA), timeout=60) as r:
+        res = json.load(r)["result"]["resources"]
+    best = None
+    for x in res:
+        m = re.search(r"(\d{4})-(\d{2})_elementary_class_size", x["url"], re.I)
+        if m and (best is None or m.group(1) > best[0]):
+            best = (m.group(1), f"{m.group(1)}-{m.group(2)}", x["url"])
+    if not best:
+        print("class size: no yearly file found, skipped")
+        return None
+    _, year, url = best
+    wb = openpyxl.load_workbook(fetch(url, f"class_size_{year}.xlsx"), read_only=True)
+    ws = wb.worksheets[0]
+    rows = ws.iter_rows(values_only=True)
+    header = [str(h).strip() if h else "" for h in next(rows)]
+    ix = {h: i for i, h in enumerate(header)}
+    per_school = {}
+    for r in rows:
+        if not r or not r[ix["SCHOOL_LONG_NAME"]]:
+            continue
+        # Counts under 5 are suppressed as "<5" for privacy; count them as 2 (middle of 1-4).
+        g = [2 if str(r[ix[k]]).strip().startswith("<") else int(float(r[ix[k]] or 0)) for k in ("JK", "K", "G1", "G2", "G3", "G4G8")]
+        per_school.setdefault((_norm(r[ix["BOARD_LONG_NAME"]]), _norm(r[ix["SCHOOL_LONG_NAME"]])), []).append(g)
+    by_name = {}
+    for s in schools.values():
+        by_name.setdefault(_norm(s["name"]), []).append(s)
+
+    def summarize(classes):
+        k = [sum(c) for c in classes if c[0] + c[1] and not sum(c[2:])]
+        p = [sum(c) for c in classes if sum(c[2:5]) and not c[0] + c[1] and not c[5]]
+        j = [sum(c) for c in classes if c[5] and not sum(c[:5])]
+        comb = sum(1 for c in classes if sum(1 for v in c[2:] if v) > 1 or (c[0] + c[1] and sum(c[2:])))
+        avg = lambda a: round(sum(a) / len(a), 1) if a else None
+        return {"n": len(classes), "k": [len(k), avg(k)], "p": [len(p), avg(p), round(100 * sum(1 for v in p if v <= 20) / len(p)) if p else None],
+                "j": [len(j), avg(j)], "c": comb}
+
+    matched, boards = 0, {}
+    for (bkey, skey), classes in per_school.items():
+        cands = by_name.get(skey, [])
+        if len(cands) > 1:
+            cands = [s for s in cands if _norm(s["board"]) == bkey] or cands[:0]
+        if len(cands) == 1:
+            cands[0]["cls"] = dict(summarize(classes), y=year)
+            matched += 1
+        boards.setdefault(bkey, []).extend(classes)
+    ref = {"tdsb": summarize(boards.get(_norm(BOARD_NAME), [])), "ontario": summarize([c for v in boards.values() for c in v]), "year": year}
+    tdsb_total = sum(1 for s in schools.values() if s["board"] == BOARD_NAME)
+    tdsb_hit = sum(1 for s in schools.values() if s["board"] == BOARD_NAME and "cls" in s)
+    print(f"class size {year}: matched {matched} of {len(per_school)} schools (TDSB {tdsb_hit}/{tdsb_total}); TDSB {ref['tdsb']}")
+    return ref
+
+
 def board_slug(name):
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
@@ -302,6 +364,7 @@ def main():
         "sqReference": sq_ref,
         "schools": sorted((x for x in schools.values() if x["board"] == BOARD_NAME), key=lambda x: x["name"]),
     }
+    data["classRef"] = class_sizes(schools)
     write_ontario(ontario, files, latest, dir_year)
 
     # Every other board: one file each, loaded only when one of its schools is opened or compared.
