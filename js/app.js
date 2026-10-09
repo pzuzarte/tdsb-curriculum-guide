@@ -16,7 +16,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261009b"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261009c"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -1175,6 +1175,26 @@
     return { html, draw };
   }
 
+  // ---------- class sizes (Ontario open data, latest school year) ----------
+  function classSizeSection(S, schools) {
+    const R = S.classRef;
+    if (!R || !schools.some(s => s.cls)) return "";
+    const num1 = v => (v == null ? "--" : (lang === "fr" ? String(v).replace(".", ",") : String(v)));
+    const cols = [...schools.map(s => ({ label: s.name, c: s.cls })), { label: t("sc.typTDSB"), c: R.tdsb, ref: true }, { label: t("sc.typON"), c: R.ontario, ref: true }];
+    const rowsDef = [
+      [t("cs.k"), c => c.k[0] ? `${num1(c.k[1])} <span class="muted small">(${t("cs.nClasses", { n: c.k[0] })})</span>` : "--"],
+      [t("cs.p"), c => c.p[0] ? `${num1(c.p[1])} <span class="muted small">(${t("cs.nClasses", { n: c.p[0] })})</span>` : "--"],
+      [t("cs.p20"), c => (c.p[2] == null ? "--" : pctTxt(c.p[2]))],
+      [t("cs.j"), c => c.j[0] ? `${num1(c.j[1])} <span class="muted small">(${t("cs.nClasses", { n: c.j[0] })})</span>` : "--"],
+      [t("cs.comb"), c => (c.n ? `${c.c} ${t("cs.of")} ${c.n}` : "--")]];
+    return `<h2>${esc(t("cs.h", { y: yearLabel(R.year) }))}</h2>${howTo("cs.how")}
+      <div class="table-wrap"><table class="data stack">
+        <thead><tr><th></th>${cols.map(c => `<th>${esc(c.label)}</th>`).join("")}</tr></thead>
+        <tbody>${rowsDef.map(([lab, f]) => `<tr><th scope="row">${esc(lab)}</th>${cols.map(c => `<td data-label="${esc(c.label)}" class="${c.ref ? "muted" : ""}">${c.c ? f(c.c) : "--"}</td>`).join("")}</tr>`).join("")}</tbody>
+      </table></div>
+      <p class="muted small">${esc(t("cs.note"))} <a href="https://www.ontario.ca/laws/regulation/120132" target="_blank" rel="noopener">${esc(t("cs.reg"))} ↗</a></p>`;
+  }
+
   // ---------- "Schools like this one": nearest schools by community context, same board ----------
   const SIM_KEYS = ["lowinc", "ell", "newc", "sped", "nodeg"];
   function similarSchools(S, school, k = 6) {
@@ -1698,6 +1718,7 @@
         ${trendCharts(S, series)}
         ${dd.html}
         ${similarSection(S, s)}
+        ${classSizeSection(S, [s])}
         <h2>${esc(t("sc.contextH"))}</h2>
         <p class="muted">${esc(t("sc.contextP", { y: yearLabel(S.contextYear) }))}</p>
         ${contextTable(S, [s])}
@@ -1749,6 +1770,7 @@
         ${trendCharts(S, series)}
         ${dd.html}
         <p><a class="btn ghost" href="#/schools/city">📊 ${esc(t("city.see"))}</a></p>
+        ${classSizeSection(S, schools)}
         <h2>${esc(t("sc.ctxCompare"))}</h2>
         <p class="muted">${esc(t("sc.contextP", { y: yearLabel(S.contextYear) }))}</p>
         ${contextTable(S, schools)}
