@@ -182,7 +182,7 @@ def main():
         probe(a.probe, langs[0])
         return
     for lang in langs:
-        out = {"fetched": time.strftime("%Y-%m-%d"), "subjects": {}}
+        out = {"subjects": {}}  # no timestamps: unchanged data must produce identical files
         for sid, grades in COURSES.items():
             out["subjects"][sid] = {}
             src = lang if (lang == "en" or sid in FR_EQUIVALENT) else "en"

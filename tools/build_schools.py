@@ -292,7 +292,6 @@ def main():
                 s["sq"] = ex["sq"]
 
     data = {
-        "built": time.strftime("%Y-%m-%d"),
         "sources": {"eqao": EQAO_OPEN_DATA,
                     "schools": "https://data.ontario.ca/dataset/school-information-and-student-demographics"},
         "contextYear": dir_year,

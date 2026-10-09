@@ -87,7 +87,7 @@ def main():
                     if s["res"].get(latest) and any(v is not None for v in s["res"][latest][3:]) and not s.get("fr")]
     print(f"{len(targets)} schools with Grade 6 results; up to {len(targets) * DELAY // 60} minutes at {DELAY}s per request")
 
-    out = {"year": latest, "grade3Year": None, "release": a.release, "fetched": time.strftime("%Y-%m-%d"),
+    out = {"year": latest, "grade3Year": None, "release": a.release,
            "source": "https://www.eqao.com/results/", "reference": {}, "boards": {}, "schools": {}}
     done = 0
     for sid, board in targets:
