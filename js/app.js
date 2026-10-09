@@ -16,7 +16,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261008r"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261009b"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -775,7 +775,8 @@
   }
   const findSchool = id => schoolCache[id];
   // Load TDSB data plus whatever boards the given (or compared) schools belong to.
-  const needSchoolsFor = ids => () => needSchools().then(S => ensureSchools(S, (ids || []).concat(getCompare())).then(() => S));
+  const needTracking = () => loadScript(`js/tracking.js?v=${ASSET_V}`).then(() => window.TRACKING, () => null);
+  const needSchoolsFor = ids => () => needSchools().then(S => Promise.all([ensureSchools(S, (ids || []).concat(getCompare())), needTracking()]).then(() => S));
   const schoolById = S => { registerTDSB(S); return schoolCache; };
   const getCompare = () => getJSON(COMPARE_KEY, []).slice(0, 4);
   const setCompare = ids => setJSON(COMPARE_KEY, ids.slice(0, 4));
@@ -952,7 +953,8 @@
       <tbody>${Object.keys(med).map(k => `<tr><th scope="row">${esc(t("ctx." + k))}</th>${schools.map(s => `<td${L(s.name)}>${pctTxt(s.ctx[k])}</td>`).join("")}<td class="muted"${L(t("sc.typCtx"))}>${pctTxt(med[k])}</td><td class="muted"${L(t("sc.allCtx"))}>${fmt1(wtd[k])}</td></tr>`).join("")}
         <tr><th scope="row">${esc(t("sc.enrol"))}</th>${schools.map(s => `<td${L(s.name)}>${s.enrol == null ? "--" : s.enrol}</td>`).join("")}<td class="muted"${L(t("sc.typCtx"))}>${median(S.schools.map(s => s.enrol))}</td><td class="muted"${L(t("sc.allCtx"))}>--</td></tr>
       </tbody></table></div>
-      <p class="muted small">${esc(t("sc.ctxNote"))}</p>`;
+      <p class="muted small">${esc(t("sc.ctxNote"))}</p>
+      <details class="tv how"><summary>${esc(t("sc.howMeasuredH"))}</summary>${t("sc.howMeasured_html")}</details>`;
   }
 
   // ======================================================================
@@ -1173,10 +1175,88 @@
     return { html, draw };
   }
 
+  // ---------- "Schools like this one": nearest schools by community context, same board ----------
+  const SIM_KEYS = ["lowinc", "ell", "newc", "sped", "nodeg"];
+  function similarSchools(S, school, k = 6) {
+    const year = latestYear(S);
+    const pool = (school.tdsb ? S.schools : Object.values(schoolCache).filter(x => x.board === school.board))
+      .filter(x => SIM_KEYS.every(key => x.ctx && x.ctx[key] != null) && x.res[year] && x.res[year].some(v => v != null));
+    if (!SIM_KEYS.every(key => school.ctx[key] != null) || pool.length < 5) return [];
+    const stats = SIM_KEYS.map(key => {
+      const v = pool.map(x => x.ctx[key]), m = mean(v);
+      const sd = Math.sqrt(mean(v.map(x => (x - m) ** 2))) || 1;
+      return { key, m, sd };
+    });
+    const z = x => stats.map(st => (x.ctx[st.key] - st.m) / st.sd);
+    const zs = z(school);
+    // Prefer schools that report the same grades (e.g. both have Grade 6 results).
+    const sameGrades = x => [0, 3].every(off => (school.res[year] && school.res[year].slice(off, off + 3).some(v => v != null)) === x.res[year].slice(off, off + 3).some(v => v != null));
+    return pool.filter(x => x.id !== school.id)
+      .map(x => ({ s: x, d: Math.hypot(...z(x).map((v, i) => v - zs[i])) + (sameGrades(x) ? 0 : 1.5) }))
+      .sort((a, b) => a.d - b.d).slice(0, k).map(o => o.s);
+  }
+  function similarSection(S, school) {
+    const year = latestYear(S);
+    const sims = similarSchools(S, school);
+    if (!sims.length) return "";
+    const own = school.res[year] || [];
+    const groupAvg = MEASURES.map((m, i) => mean(sims.map(x => x.res[year][i])));
+    const diffs = MEASURES.map((m, i) => (own[i] != null && groupAvg[i] != null ? own[i] - groupAvg[i] : null));
+    const summary = MEASURES.map((m, i) => diffs[i] == null ? "" :
+      `<li><strong>${esc(t("m." + m))}:</strong> ${pctTxt(own[i])} ${esc(t("sim.vs"))} ${pctTxt(Math.round(groupAvg[i]))} <span class="sim-d ${diffs[i] >= 5 ? "up" : diffs[i] <= -5 ? "down" : ""}">(${signed(diffs[i])})</span></li>`).join("");
+    const L = s => ` data-label="${esc(s)}"`;
+    const row = (x, self) => `<tr class="${self ? "sim-self" : ""}"><th scope="row">${self ? `<strong>${esc(x.name)}</strong>` : `<a href="#/school/${x.id}">${esc(x.name)}</a>`}</th>
+      <td${L(t("sc.lowinc"))}>${pctTxt(x.ctx.lowinc)}</td><td${L(t("sc.ell"))}>${pctTxt(x.ctx.ell)}</td>
+      ${MEASURES.map((m, i) => { const v = x.res[year] ? x.res[year][i] : null; return `<td${L(t("m." + m))}${v == null ? ' class="muted"' : ""}>${v == null ? "--" : pctTxt(v)}</td>`; }).join("")}
+      <td class="cb"${L(t("sc.add"))}>${self ? "" : addBtn(x.id)}</td></tr>`;
+    const top3 = [school.id, ...sims.slice(0, 3).map(x => x.id)];
+    return `<h2>${esc(t("sim.h"))}</h2>${howTo("sim.how")}
+      <div class="card">
+        <p class="small"><strong>${esc(t("sim.sumH", { y: yearLabel(year) }))}</strong></p>
+        <ul class="clean sim-sum">${summary}</ul>
+        <div class="table-wrap"><table class="data stack sim-table">
+          <thead><tr><th>${esc(t("sc.name"))}</th><th>${esc(t("sc.lowinc"))}</th><th>${esc(t("sc.ell"))}</th>${MEASURES.map(m => `<th>${esc(t("m." + m))}</th>`).join("")}<th><span class="sr">${esc(t("sc.add"))}</span></th></tr></thead>
+          <tbody>${row(school, true)}${sims.map(x => row(x, false)).join("")}</tbody></table></div>
+        <p class="page-actions"><a class="btn" href="#/compare-schools/${top3.join(",")}">⚖️ ${esc(t("sim.compare3"))}</a></p>
+        <p class="muted small">${esc(t("sim.note", { b: school.tdsb ? "TDSB" : school.board }))}</p>
+      </div>`;
+  }
+
+  // ---------- Grade 3 -> Grade 6, same students (EQAO tracking) ----------
+  function trackingChart(series) {
+    const T = window.TRACKING;
+    if (!T || !series.some(s => T.schools[s.school.id])) return null;
+    const boards = [...new Set(series.filter(s => !s.school.tdsb && s.school.boardNo && T.boards[s.school.boardNo]).map(s => s.school))]
+      .filter((sc, i, arr) => arr.findIndex(x => x.boardNo === sc.boardNo) === i);
+    const rows = k => [
+      ...series.map(s => ({ label: s.label, color: s.color, d: (T.schools[s.school.id] || {})[k] })),
+      { label: t("sc.typTDSB"), d: T.reference.tdsb && T.reference.tdsb[k], ref: true },
+      ...boards.map(sc => ({ label: t("sc.boardAll", { b: sc.board }), d: T.boards[sc.boardNo][k], ref: true })),
+      { label: t("sc.typON"), d: T.reference.ontario && T.reference.ontario[k], ref: true }];
+    const lab = ["maintained", "rose", "dropped", "never"].map(x => t("trk." + x));
+    const seg = (cls, v, i, who, subj, n) => v ? `<span class="lv ${cls}" style="width:${v}%" data-tip="${esc(who)} -- ${esc(subj)}: ${esc(lab[i])} ${pctTxt(v)}${n ? ` (${t("trk.ofN", { n })})` : ""}"></span>` : "";
+    const subj = { R: t("me.mt").r, W: t("me.mt").w, M: t("me.mt").m };
+    return `<div class="legend">
+        <span><i class="sw lv-l1"></i>${esc(lab[3])}</span><span><i class="sw lv-l2"></i>${esc(lab[2])}</span><span class="lv-sep">|</span>
+        <span><i class="sw lv-l3"></i>${esc(lab[1])}</span><span><i class="sw lv-l4"></i>${esc(lab[0])}</span></div>
+      <div class="lvc">${["R", "W", "M"].map(k => `
+        <div class="lv-block"><div class="lv-title">${esc(subj[k])}</div>
+          ${rows(k).map(r => { const d = r.d; return `<div class="lv-row ${r.ref ? "ref" : ""}">
+            <span class="lv-name">${r.color ? `<i class="sw" style="background:${r.color}"></i>` : ""}${esc(r.label)}${d && d[4] && !r.ref ? ` <span class="muted">(${d[4]})</span>` : ""}</span>
+            ${d ? `<div class="lv-bar"><div class="lv-left">${seg("lv-l1", d[3], 3, r.label, subj[k], d[4])}${seg("lv-l2", d[2], 2, r.label, subj[k], d[4])}</div>
+              <div class="lv-right">${seg("lv-l3", d[1], 1, r.label, subj[k], d[4])}${seg("lv-l4", d[0], 0, r.label, subj[k], d[4])}</div></div>`
+              : `<span class="muted small">${esc(t("trk.na"))}</span>`}</div>`; }).join("")}
+        </div>`).join("")}
+        <div class="lv-axis"><span></span><div><span>100%</span><span>50%</span><span class="mid">${esc(t("trk.axis"))}</span><span>50%</span><span>100%</span></div></div>
+      </div>
+      <p class="muted small">${esc(t("trk.note", { a: yearLabel(T.grade3Year), b: yearLabel(T.year) }))}</p>`;
+  }
+
   // Deep-dive sections shared by the school profile and the comparison page.
   function deepDive(S, series) {
     const year = latestYear(S);
     const coh = cohortCharts(S, series);
+    const trk = trackingChart(series);
     const html = `
       <h2>${esc(t("viz.rangeH"))}</h2>${howTo("viz.rangeHow")}
       <div class="card">${rangeChart(S, series)}</div>
@@ -1187,11 +1267,12 @@
       <h2>${esc(t("viz.subH", { y: yearLabel(year) }))}</h2>${howTo("viz.subHow")}
       <div class="card"><div class="controls inline"><label>${esc(t("viz.measure"))}<select id="sgMeasure">${measureOptions(5)}</select></label></div>
         <div id="sgOut">${subgroupChart(S, series, 5)}</div><p class="muted small">${esc(t("viz.subNote"))}</p></div>
-      ${coh ? `<h2>${esc(t("viz.cohortH"))}</h2>${howTo("viz.cohortHow")}${coh.html}` : ""}`;
+      ${trk ? `<h2>${esc(t("trk.h"))}</h2>${howTo("trk.how")}<div class="card">${trk}</div>`
+        : coh ? `<h2>${esc(t("viz.cohortH"))}</h2>${howTo("viz.cohortHow")}${coh.html}` : ""}`;
     const wire = () => {
       const sel = document.getElementById("sgMeasure");
       if (sel) sel.addEventListener("change", () => { document.getElementById("sgOut").innerHTML = subgroupChart(S, series, +sel.value); });
-      if (coh) coh.draw();
+      if (coh && !trk) coh.draw();
     };
     return { html, wire };
   }
@@ -1227,7 +1308,8 @@
         <section><h2>${esc(t("city.funnelH"))}</h2>${howTo("city.funnelHow")}<div class="card"><div id="cFunSum" class="small"></div><div id="cFunnel" class="mount"></div><p class="muted small click-hint">👆 ${esc(t("viz.clickHint"))}</p></div></section>
         <section><h2>${esc(t("city.groupsH"))}</h2>${howTo("city.groupsHow")}<div class="card"><div class="legend"><span><i class="refkey r1"></i>${esc(t("sc.typTDSB"))}</span><span><i class="refkey r2"></i>${esc(t("sc.typON"))}</span></div><div id="cGroups" class="grid grid-3"></div></div></section>
         <section><h2>${esc(t("city.sqH"))}</h2>${howTo("city.sqHow")}<div class="card"><div class="controls inline"><label>${esc(t("city.sqItem"))}<select id="cSq"></select></label></div><div id="cSqSum" class="small"></div><div id="cSqChart" class="mount"></div><p class="muted small click-hint">👆 ${esc(t("viz.clickHint"))}</p></div></section>
-        <p class="muted small">${esc(t("city.method"))}</p>
+        <p class="muted small">${esc(t("city.method"))} ${esc(t("city.lowincNote"))}</p>
+        <details class="tv how"><summary>${esc(t("sc.howMeasuredH"))}</summary>${t("sc.howMeasured_html")}</details>
       </div>`;
 
       const tipName = s => s.name;
@@ -1615,6 +1697,7 @@
         <h2>${esc(t("sc.trendH"))}</h2>
         ${trendCharts(S, series)}
         ${dd.html}
+        ${similarSection(S, s)}
         <h2>${esc(t("sc.contextH"))}</h2>
         <p class="muted">${esc(t("sc.contextP", { y: yearLabel(S.contextYear) }))}</p>
         ${contextTable(S, [s])}
@@ -1622,6 +1705,11 @@
       dd.wire();
       document.getElementById("cmpBtn").onclick = () => { if (toggleCompare(id)) viewSchool(id); };
       onCompareChange = () => { const y = window.scrollY; viewSchool(id); setTimeout(() => window.scrollTo(0, y), 150); };
+      main.addEventListener("click", function simAdd(ev) {
+        if (!document.getElementById("cmpBtn")) { main.removeEventListener("click", simAdd); return; }
+        const tg = ev.target.closest(".sim-table button[data-toggle]");
+        if (tg && toggleCompare(tg.dataset.toggle)) onCompareChange();
+      });
     });
   }
 
