@@ -16,7 +16,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261009e"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261009f"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -1324,12 +1324,12 @@
       <h2>${esc(t("viz.subH", { y: yearLabel(year) }))}</h2>${howTo("viz.subHow")}
       <div class="card"><div class="controls inline"><label>${esc(t("viz.measure"))}<select id="sgMeasure">${measureOptions(5)}</select></label></div>
         <div id="sgOut">${subgroupChart(S, series, 5)}</div><p class="muted small">${esc(t("viz.subNote"))}</p></div>
-      ${trk ? `<h2>${esc(t("trk.h"))}</h2>${howTo("trk.how")}<div class="card">${trk}</div>`
-        : coh ? `<h2>${esc(t("viz.cohortH"))}</h2>${howTo("viz.cohortHow")}${coh.html}` : ""}`;
+      ${trk ? `<h2>${esc(t("trk.h"))}</h2>${howTo("trk.how")}<div class="card">${trk}</div>` : ""}
+      ${coh ? `<h2>${esc(t("viz.cohortH"))}</h2>${howTo("viz.cohortHow")}${coh.html}` : ""}`;
     const wire = () => {
       const sel = document.getElementById("sgMeasure");
       if (sel) sel.addEventListener("change", () => { document.getElementById("sgOut").innerHTML = subgroupChart(S, series, +sel.value); });
-      if (coh && !trk) coh.draw();
+      if (coh) coh.draw();
     };
     return { html, wire };
   }
