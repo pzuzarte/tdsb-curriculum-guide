@@ -16,7 +16,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261009g"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261009h"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -1559,7 +1559,9 @@
         ${researchPanel("schools")}
         <div id="trayWrap">${compareTray(S)}</div>
         <div class="card controls">
-          <label class="grow"><span class="sr">${esc(t("sc.searchPh"))}</span><input id="sq" type="search" placeholder="${esc(t("sc.searchPh"))}"></label>
+          <div class="grow ac-wrap"><label class="sr" for="sq">${esc(t("sc.searchPh"))}</label>
+            <input id="sq" type="search" placeholder="${esc(t("sc.searchPh"))}" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="sqList">
+            <ul id="sqList" class="ac-list" role="listbox" hidden></ul></div>
           <button class="btn ghost" id="near">📍 ${esc(t("sc.nearMe"))}</button>
           <a class="btn ghost" href="#/my-eqao">🎯 ${esc(t("tool.myeqao")[0])}</a>
         </div>
@@ -1699,7 +1701,61 @@
 
       const rerender = () => (tab === "table" ? renderTable() : renderMapList());
       onCompareChange = () => ensureSchools(S, getCompare()).then(() => { refreshTray(); rerender(); });
-      document.getElementById("sq").addEventListener("input", ev => { state.q = ev.target.value.trim(); rerender(); });
+      document.getElementById("sq").addEventListener("input", ev => { state.q = ev.target.value.trim(); rerender(); suggest(); });
+
+      // Suggestions under the search box: up to 8 matching schools, best matches first.
+      const sq = document.getElementById("sq"), sqList = document.getElementById("sqList");
+      let acItems = [], acActive = -1;
+      const fold = x => (x || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+      function suggest() {
+        const q = fold(sq.value);
+        if (q.length < 2) return closeAc();
+        const pool = onMode() ? window.SCHOOLS_ON._objs : S.schools;
+        const scored = [];
+        for (const x of pool) {
+          const n = fold(x.name);
+          const at = n.indexOf(q);
+          const pc = fold(x.postal).startsWith(q);
+          if (at < 0 && !pc && !(onMode() && fold(x.board).includes(q))) continue;
+          scored.push({ x, score: at === 0 ? 0 : at > 0 ? 1 : 2 });
+        }
+        scored.sort((a, b) => a.score - b.score || a.x.name.localeCompare(b.x.name));
+        acItems = scored.slice(0, 8).map(o => o.x);
+        acActive = -1;
+        const ids = getCompare();
+        sqList.innerHTML = acItems.length ? acItems.map((x, i) => `<li role="option" id="ac-${i}" class="ac-item" data-i="${i}">
+            <span class="ac-name">${esc(x.name)}</span><span class="ac-meta">${esc(onMode() ? x.board + " · " + x.grades : x.grades + (x.addr ? " · " + x.addr : ""))}</span>
+            <button type="button" class="btn add sm ${ids.includes(x.id) ? "on" : ""}" data-ac-add="${x.id}">${ids.includes(x.id) ? "✓" : "+ " + esc(t("sc.compareShort"))}</button></li>`).join("")
+          + (scored.length > 8 ? `<li class="ac-more muted small">${esc(t("sc.acMore", { n: scored.length - 8 }))}</li>` : "")
+          : `<li class="ac-more muted small">${esc(t("sc.acNone"))}</li>`;
+        sqList.hidden = false;
+        sq.setAttribute("aria-expanded", "true");
+      }
+      function closeAc() { sqList.hidden = true; sq.setAttribute("aria-expanded", "false"); sq.removeAttribute("aria-activedescendant"); acActive = -1; }
+      function setActive(i) {
+        acActive = i;
+        sqList.querySelectorAll(".ac-item").forEach((li, k) => li.classList.toggle("active", k === i));
+        if (i >= 0) { sq.setAttribute("aria-activedescendant", "ac-" + i); sqList.querySelector("#ac-" + i).scrollIntoView({ block: "nearest" }); }
+      }
+      sq.addEventListener("keydown", ev => {
+        if (sqList.hidden || !acItems.length) return;
+        if (ev.key === "ArrowDown") { ev.preventDefault(); setActive(Math.min(acItems.length - 1, acActive + 1)); }
+        else if (ev.key === "ArrowUp") { ev.preventDefault(); setActive(Math.max(-1, acActive - 1)); }
+        else if (ev.key === "Enter" && acActive >= 0) { ev.preventDefault(); location.hash = `#/school/${acItems[acActive].id}`; }
+        else if (ev.key === "Escape") closeAc();
+      });
+      sq.addEventListener("focus", suggest);
+      sqList.addEventListener("mousedown", ev => ev.preventDefault()); // keep focus in the box while clicking
+      sqList.addEventListener("click", ev => {
+        const add = ev.target.closest("[data-ac-add]");
+        if (add) { ev.stopPropagation(); if (toggleCompare(add.dataset.acAdd)) { refreshTray(); rerender(); suggest(); } return; }
+        const li = ev.target.closest(".ac-item");
+        if (li) location.hash = `#/school/${acItems[+li.dataset.i].id}`;
+      });
+      document.addEventListener("click", function acOutside(ev) {
+        if (!sq.isConnected) { document.removeEventListener("click", acOutside); return; }
+        if (!ev.target.closest(".ac-wrap")) closeAc();
+      });
       document.getElementById("near").addEventListener("click", () => {
         const msg = document.getElementById("nearMsg");
         if (!navigator.geolocation) { msg.textContent = t("sc.nearErr"); return; }
