@@ -79,7 +79,7 @@ window.I18N = {
     "se.official": "Official", "se.school": "School",
 
     "sc.h1": "Schools & EQAO results",
-    "sc.lead": "Find TDSB elementary schools and see how their students did on the province-wide EQAO assessments in Grades 3 and 6.",
+    "sc.lead": "Find TDSB elementary schools (or any school in Ontario) and see how their students did on the province-wide EQAO assessments in Grades 3 and 6. Select \"+ Add to compare\" on up to 4 schools, then choose Compare to see them side by side.",
     "sc.caveat_html": "<strong>Read before comparing.</strong> EQAO results show the percentage of students who met the provincial standard (Level 3 or 4) on one assessment. They are strongly linked to a school's community: family income, how many students are learning English, special education needs, and cohort size. Small schools can swing a lot from year to year. Results don't measure teaching quality, school climate, arts, sports or well-being -- visit schools and talk to families too. The most recent open data is for <strong>{y}</strong>.",
     "sc.map": "Map", "sc.table": "Table", "sc.searchPh": "Search by school name or postal code (e.g. M4C)",
     "sc.nearMe": "Schools near me", "sc.nearErr": "Location is not available. You can search by name or postal code instead.", "sc.nearNote": "Sorted by distance from you. Your location stays in your browser.",
@@ -271,7 +271,7 @@ window.I18N = {
     "se.official": "Officiel", "se.school": "École",
 
     "sc.h1": "Écoles et résultats de l'OQRE",
-    "sc.lead": "Trouvez des écoles élémentaires du TDSB et voyez les résultats de leurs élèves aux évaluations provinciales de l'OQRE de 3e et de 6e année.",
+    "sc.lead": "Trouvez des écoles élémentaires du TDSB (ou toute école de l'Ontario) et voyez les résultats de leurs élèves aux évaluations provinciales de l'OQRE de 3e et de 6e année. Sélectionnez « + Ajouter à la comparaison » pour un maximum de 4 écoles, puis choisissez Comparer pour les voir côte à côte.",
     "sc.caveat_html": "<strong>À lire avant de comparer.</strong> Les résultats de l'OQRE indiquent le pourcentage d'élèves ayant atteint la norme provinciale (niveau 3 ou 4) lors d'une évaluation. Ils sont fortement liés à la communauté de l'école : revenu des familles, nombre d'élèves qui apprennent l'anglais, besoins en éducation de l'enfance en difficulté et taille des cohortes. Les résultats des petites écoles peuvent varier beaucoup d'une année à l'autre. Ils ne mesurent pas la qualité de l'enseignement, le climat scolaire, les arts, les sports ou le bien-être -- visitez les écoles et parlez aux familles. Les données ouvertes les plus récentes portent sur <strong>{y}</strong>.",
     "sc.map": "Carte", "sc.table": "Tableau", "sc.searchPh": "Rechercher par nom d'école ou code postal (p. ex. M4C)",
     "sc.nearMe": "Écoles près de moi", "sc.nearErr": "La localisation n'est pas disponible. Vous pouvez rechercher par nom ou code postal.", "sc.nearNote": "Triées selon la distance. Votre position reste dans votre navigateur.",
