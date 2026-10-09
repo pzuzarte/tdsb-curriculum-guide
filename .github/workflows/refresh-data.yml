@@ -1,0 +1,76 @@
+# Rebuilds the site's data from its public sources and opens a pull request when anything changed.
+# Nothing is published until the pull request is reviewed and merged.
+name: Refresh data
+
+on:
+  schedule:
+    - cron: "0 10 1 * *"          # monthly: curriculum expectations + school data
+    - cron: "0 10 15 9,10,11 *"   # Sep-Nov (EQAO release season): also Grade 3 -> 6 tracking (~80 min)
+  workflow_dispatch:
+    inputs:
+      tracking:
+        description: "Also refresh Grade 3 -> 6 tracking (slow, ~80 minutes)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install openpyxl
+
+      - name: Curriculum expectations (Ministry of Education)
+        run: python3 tools/fetch_expectations.py
+
+      - name: School data (EQAO open data + Ontario school information)
+        run: python3 tools/build_schools.py
+
+      - name: Grade 3 -> 6 tracking (EQAO results site)
+        if: github.event.schedule == '0 10 15 9,10,11 *' || inputs.tracking
+        run: python3 tools/fetch_eqao_tracking.py --boards toronto-cdsb
+
+      - name: Check the data
+        run: python3 tools/check_data.py
+
+      - name: Bump cache version if data changed
+        id: changes
+        run: |
+          if [ -n "$(git status --porcelain js/)" ]; then
+            python3 tools/bump_version.py
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No data changes."
+          fi
+
+      - name: Open pull request
+        if: steps.changes.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: data-refresh
+          delete-branch: true
+          commit-message: "Refresh curriculum and school data"
+          title: "Data refresh: curriculum and EQAO/school data"
+          body: |
+            Automated monthly refresh from the public sources:
+            - Ministry of Education curriculum expectations
+            - EQAO open data and Ontario school information
+            - Grade 3 to 6 tracking (Sep-Nov runs, or when requested)
+
+            `tools/check_data.py` passed. Review the changes (look for a new school year in
+            `js/schools.js` each fall), then merge to publish.
