@@ -16,7 +16,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261009c"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261009d"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -220,6 +220,40 @@
   // ======================================================================
   // CURRICULUM VIEWS
   // ======================================================================
+  // ---------- "What the research says" ----------
+  const researchTopics = () => (window.RESEARCH ? window.RESEARCH.topics : []);
+  function researchPanel(key) {
+    const items = researchTopics().filter(r => r.on.includes(key));
+    if (!items.length) return "";
+    return `<aside class="research-box"><div class="rb-head">🔬 ${esc(t("rs.panel"))}</div>
+      ${items.map(r => { const c = r[lang] || r.en; return `<a class="rb-item" href="#/research/${r.id}"><strong>${r.icon} ${esc(c.title)}</strong><span>${esc(c.summary)}</span><em>${esc(t("rs.more"))} →</em></a>`; }).join("")}</aside>`;
+  }
+  function viewResearch(focus) {
+    const topics = researchTopics();
+    main.innerHTML = `
+      <h1>🔬 ${esc(t("rs.h1"))}</h1>
+      <p class="lead">${esc(t("rs.lead"))}</p>
+      <nav class="rs-toc" aria-label="${esc(t("rs.h1"))}">${topics.map(r => `<a href="#/research/${r.id}">${r.icon} ${esc((r[lang] || r.en).title)}</a>`).join("")}</nav>
+      ${topics.map(r => { const c = r[lang] || r.en; return `
+        <article class="card rs-topic" id="rs-${r.id}">
+          <h2>${r.icon} ${esc(c.title)}</h2>
+          <p class="lead">${esc(c.summary)}</p>
+          <h3>${esc(t("rs.ontario"))}</h3><p>${esc(c.ontario)}</p>
+          <div class="grid grid-2 rs-sides">
+            <div class="rs-pro"><h3>${esc(t("rs.pro"))}</h3><p>${esc(c.pro)}</p></div>
+            <div class="rs-con"><h3>${esc(t("rs.con"))}</h3><p>${esc(c.con)}</p></div>
+          </div>
+          <div class="note"><strong>${esc(t("rs.parents"))}</strong> ${esc(c.parents)}</div>
+          <details class="tv"><summary>${esc(t("rs.sources"))} (${r.sources.length})</summary>
+            <ul class="rs-src">${r.sources.map(([n, u]) => `<li><a href="${u}" target="_blank" rel="noopener">${esc(n)} ↗</a></li>`).join("")}</ul></details>
+        </article>`; }).join("")}
+      <p class="muted small">${esc(t("rs.note", { d: window.RESEARCH ? window.RESEARCH.reviewed : "" }))}</p>`;
+    if (focus) {
+      const el = document.getElementById("rs-" + focus);
+      if (el) requestAnimationFrame(() => { el.scrollIntoView({ block: "start" }); window.scrollBy(0, -80); el.classList.add("focused"); });
+    }
+  }
+
   function viewHome() {
     const rows = D.subjects.map(s => `
       <tr>
@@ -327,6 +361,7 @@
         <div class="card"><h3>💬 ${esc(t("grade.ask"))}</h3>${list(g.ask, "")}</div>
       </div>
       ${ms.length ? `<div class="note"><strong>${esc(t("grade.milestones"))}</strong> ${ms.map(m => esc(m.title)).join(" · ")} · <a href="#/milestones">${esc(t("grade.details"))}</a></div>` : ""}
+      ${researchPanel("grade:" + gid)}
       ${frames}
       <div class="grid grid-2">${cards}</div>
       <div class="page-actions spread">
@@ -354,6 +389,7 @@
         <div class="card"><h3>${esc(t("subject.strands"))}</h3>${list(s.strands, "")}</div>
         <div class="card"><h3>${esc(t("subject.doc"))}</h3><p>${esc(s.doc)}</p><p><a href="${s.url}" target="_blank" rel="noopener">${esc(t("subject.read"))} ↗</a></p></div>
       </div>
+      ${researchPanel("subject:" + sid)}
       <h2>${esc(t("subject.builds"))}</h2>
       <div class="thread-wrap"><table class="thread">
         <thead><tr><th></th>${D.grades.map(g => `<th><a href="#/grade/${g.id}/${s.id}">${esc(g.short)}</a></th>`).join("")}</tr></thead>
@@ -711,6 +747,7 @@
     });
     D.milestones.forEach(m => idx.push({ title: m.title, href: "#/milestones", text: m.text }));
     D.glossary.forEach(x => idx.push({ title: `${t("gl.h1")}: ${x.term}`, href: "#/glossary", text: x.def }));
+    researchTopics().forEach(r => { const c = r[lang] || r.en; idx.push({ title: `${t("rs.h1")}: ${c.title}`, href: `#/research/${r.id}`, text: [c.summary, c.ontario, c.pro, c.con, c.parents].join(" ") }); });
     idx.push({ title: t("report.h1"), href: "#/report", text: "report card bulletin letter grade level E G S N " + D.reportCards.skills.map(s => s.name + " " + s.desc).join(" ") });
     if (E) {
       Object.entries(E.subjects).forEach(([sid, grades]) => Object.entries(grades).forEach(([gid, doc]) => {
@@ -1510,6 +1547,7 @@
         <h1>🏫 ${esc(t("sc.h1"))}</h1>
         <p class="lead">${esc(t("sc.lead"))}</p>
         ${caveat(S)}
+        ${researchPanel("schools")}
         <div id="trayWrap">${compareTray(S)}</div>
         <div class="card controls">
           <label class="grow"><span class="sr">${esc(t("sc.searchPh"))}</span><input id="sq" type="search" placeholder="${esc(t("sc.searchPh"))}"></label>
@@ -1857,7 +1895,7 @@
   // ---------- router ----------
   const NAV_FOR = { "": "", grade: "grade", official: "grade", handout: "grade", subject: "subject", compare: "compare",
     schools: "schools", school: "schools", "compare-schools": "schools", "my-eqao": "schools",
-    report: "report", milestones: "milestones", tracker: "tracker", glossary: "glossary" };
+    report: "report", milestones: "milestones", tracker: "tracker", glossary: "glossary", research: "research" };
 
   function afterRender() {
     const h1 = main.querySelector("h1");
@@ -1889,6 +1927,7 @@
       case "milestones": viewMilestones(); break;
       case "tracker": viewTracker(a); break;
       case "glossary": viewGlossary(); break;
+      case "research": viewResearch(a); break;
       case "search": viewSearch(a || ""); break;
       case "schools": if (a === "city") viewCity(); else viewSchools(a); break;
       case "school": viewSchool(a); break;
@@ -1897,7 +1936,7 @@
       default: notFound();
     }
     afterRender();
-    if (!(page === "grade" && b)) window.scrollTo(0, 0);
+    if (!(page === "grade" && b) && !(page === "research" && a)) window.scrollTo(0, 0);
     main.focus({ preventScroll: true });
   }
 

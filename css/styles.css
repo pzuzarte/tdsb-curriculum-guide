@@ -614,3 +614,21 @@ details.how p { font-size: .9rem; color: var(--ink-2); margin: 6px 0; }
 .sim-d.up { color: var(--lv4); font-weight: 600; } .sim-d.down { color: var(--lv1); font-weight: 600; }
 .sim-table tr.sim-self th, .sim-table tr.sim-self td { background: var(--surface-2); }
 .sim-table td.cb .btn { margin: 0; white-space: nowrap; }
+/* research */
+.research-box { border: 1px solid var(--line); border-left: 5px solid var(--accent); background: var(--surface); border-radius: var(--radius); padding: 12px 16px; margin: 18px 0; }
+.rb-head { font-weight: 700; margin-bottom: 6px; }
+.rb-item { display: grid; gap: 2px; padding: 8px 0; border-top: 1px dashed var(--line); text-decoration: none; color: var(--ink); }
+.rb-item:first-of-type { border-top: 0; }
+.rb-item span { color: var(--ink-2); font-size: .92rem; }
+.rb-item em { color: var(--accent); font-style: normal; font-weight: 600; font-size: .88rem; }
+.rs-toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 8px; }
+.rs-toc a { text-decoration: none; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-size: .9rem; }
+.rs-topic { margin-top: 18px; scroll-margin-top: 90px; }
+.rs-topic h2 { margin-top: 0; }
+.rs-topic.focused { outline: 3px solid var(--accent); }
+.rs-sides > div { border-radius: 10px; padding: 4px 14px; }
+.rs-pro { background: color-mix(in srgb, var(--lv3) 18%, transparent); }
+.rs-con { background: color-mix(in srgb, var(--lv2) 22%, transparent); }
+.rs-src li { margin: 6px 0; }
+@media (max-width: 700px) { .rs-toc { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; } .rs-toc a { flex: none; } }
+@media (min-width: 901px) and (max-width: 1240px) { .nav a { padding: 6px 7px; font-size: .86rem; } }
