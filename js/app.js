@@ -16,7 +16,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261009f"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261009g"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -820,9 +820,19 @@
   function toggleCompare(id) {
     const ids = getCompare();
     if (ids.includes(id)) setCompare(ids.filter(x => x !== id));
-    else if (ids.length >= 4) { alert(t("sc.max")); return false; }
+    else if (ids.length >= 4) { toast(t("sc.maxFull"), `#/compare-schools/${ids.join(",")}`, t("sc.compareBtn")); return false; }
     else setCompare(ids.concat(id));
     return true;
+  }
+  // Small, non-blocking message (replaces alert(), which could stack up and freeze the page).
+  let toastTimer;
+  function toast(msg, href, linkText) {
+    let el = document.getElementById("toast");
+    if (!el) { el = document.createElement("div"); el.id = "toast"; el.className = "toast"; el.setAttribute("role", "status"); document.body.appendChild(el); }
+    el.innerHTML = `<span>${esc(msg)}</span>${href ? ` <a href="${href}">${esc(linkText)} →</a>` : ""}`;
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.hidden = true; }, 5000);
   }
   function median(vals) {
     const v = vals.filter(x => x != null).sort((a, b) => a - b);
@@ -1262,17 +1272,16 @@
     const summary = MEASURES.map((m, i) => diffs[i] == null ? "" :
       `<li><strong>${esc(t("m." + m))}:</strong> ${pctTxt(own[i])} ${esc(t("sim.vs"))} ${pctTxt(Math.round(groupAvg[i]))} <span class="sim-d ${diffs[i] >= 5 ? "up" : diffs[i] <= -5 ? "down" : ""}">(${signed(diffs[i])})</span></li>`).join("");
     const L = s => ` data-label="${esc(s)}"`;
-    const row = (x, self) => `<tr class="${self ? "sim-self" : ""}"><th scope="row">${self ? `<strong>${esc(x.name)}</strong>` : `<a href="#/school/${x.id}">${esc(x.name)}</a>`}</th>
+    const row = (x, self) => `<tr class="${self ? "sim-self" : ""}"><th scope="row">${self ? `<strong>${esc(x.name)}</strong>` : `<a href="#/school/${x.id}">${esc(x.name)}</a><div class="sim-add">${addBtn(x.id)}</div>`}</th>
       <td${L(t("sc.lowinc"))}>${pctTxt(x.ctx.lowinc)}</td><td${L(t("sc.ell"))}>${pctTxt(x.ctx.ell)}</td>
-      ${MEASURES.map((m, i) => { const v = x.res[year] ? x.res[year][i] : null; return `<td${L(t("m." + m))}${v == null ? ' class="muted"' : ""}>${v == null ? "--" : pctTxt(v)}</td>`; }).join("")}
-      <td class="cb"${L(t("sc.add"))}>${self ? "" : addBtn(x.id)}</td></tr>`;
+      ${MEASURES.map((m, i) => { const v = x.res[year] ? x.res[year][i] : null; return `<td${L(t("m." + m))}${v == null ? ' class="muted"' : ""}>${v == null ? "--" : pctTxt(v)}</td>`; }).join("")}</tr>`;
     const top3 = [school.id, ...sims.slice(0, 3).map(x => x.id)];
     return `<h2>${esc(t("sim.h"))}</h2>${howTo("sim.how")}
       <div class="card">
         <p class="small"><strong>${esc(t("sim.sumH", { y: yearLabel(year) }))}</strong></p>
         <ul class="clean sim-sum">${summary}</ul>
         <div class="table-wrap"><table class="data stack sim-table">
-          <thead><tr><th>${esc(t("sc.name"))}</th><th>${esc(t("sc.lowinc"))}</th><th>${esc(t("sc.ell"))}</th>${MEASURES.map(m => `<th>${esc(t("m." + m))}</th>`).join("")}<th><span class="sr">${esc(t("sc.add"))}</span></th></tr></thead>
+          <thead><tr><th>${esc(t("sc.name"))}</th><th>${esc(t("sc.lowinc"))}</th><th>${esc(t("sc.ell"))}</th>${MEASURES.map(m => `<th>${esc(t("m." + m))}</th>`).join("")}</tr></thead>
           <tbody>${row(school, true)}${sims.map(x => row(x, false)).join("")}</tbody></table></div>
         <p class="page-actions"><a class="btn" href="#/compare-schools/${top3.join(",")}">⚖️ ${esc(t("sim.compare3"))}</a></p>
         <p class="muted small">${esc(t("sim.note", { b: school.tdsb ? "TDSB" : school.board }))}</p>
@@ -1732,7 +1741,7 @@
       const ids = getCompare();
       const series = [{ label: s.name, color: SERIES[0], school: s }];
       const dd = deepDive(S, series);
-      main.innerHTML = `
+      main.innerHTML = `<div id="profileView">
         <p><a href="#/schools">← ${esc(t("sc.h1"))}</a></p>
         <span class="pill">${esc(t("sc.profile"))} · ${esc(s.board || "Toronto DSB")} · ${esc(s.grades)}</span>
         <h1>🏫 ${esc(s.name)}</h1>
@@ -1747,6 +1756,7 @@
           ${ids.length ? `<a class="btn ghost" href="#/compare-schools/${ids.join(",")}">${esc(t("sc.compareBtn"))} (${ids.length})</a>` : ""}
           ${s.tdsb ? `<a class="btn ghost" href="#/my-eqao/${id}">🎯 ${esc(t("tool.myeqao")[0])}</a>` : `<a class="btn ghost" href="${eqaoLink(id)}" target="_blank" rel="noopener">${esc(t("sc.eqaoLink"))} ↗</a>`}
         </div>
+        ${ids.length ? compareTray(S) : ""}
         ${caveat(S)}
         <h2>${esc(t("sc.latestH", { y: yearLabel(year) }))}</h2>
         <p class="muted">${esc(t("sc.latestP"))}</p>
@@ -1760,13 +1770,14 @@
         <h2>${esc(t("sc.contextH"))}</h2>
         <p class="muted">${esc(t("sc.contextP", { y: yearLabel(S.contextYear) }))}</p>
         ${contextTable(S, [s])}
-        <p class="muted small">${esc(t("sc.typNote"))}</p>`;
+        <p class="muted small">${esc(t("sc.typNote"))}</p></div>`;
       dd.wire();
-      document.getElementById("cmpBtn").onclick = () => { if (toggleCompare(id)) viewSchool(id); };
       onCompareChange = () => { const y = window.scrollY; viewSchool(id); setTimeout(() => window.scrollTo(0, y), 150); };
-      main.addEventListener("click", function simAdd(ev) {
-        if (!document.getElementById("cmpBtn")) { main.removeEventListener("click", simAdd); return; }
-        const tg = ev.target.closest(".sim-table button[data-toggle]");
+      // One handler on this render's own container, so re-rendering never stacks duplicate handlers.
+      document.getElementById("profileView").addEventListener("click", ev => {
+        if (ev.target.closest("#cmpBtn")) { if (toggleCompare(id)) onCompareChange(); return; }
+        if (ev.target.closest("[data-clear]")) { setCompare([]); onCompareChange(); return; }
+        const tg = ev.target.closest(".sim-table button[data-toggle], .tray button[data-toggle]");
         if (tg && toggleCompare(tg.dataset.toggle)) onCompareChange();
       });
     });
