@@ -8,6 +8,7 @@ Available in **English and French** (language button in the header, or add `?lan
 - **Overview** – grade × subject grid of the whole curriculum (a grade picker with a subject list on phones)
 - **Grade pages** – big ideas, subject-by-subject learning, tips for home, questions for the teacher, printable
 - **Official expectations** – the Ministry's overall and specific expectations, word for word, for every subject and grade (plus the 2026 Kindergarten program), with the Ministry's "Why is my child learning this?" notes and a filter
+- **Practice activities** – on each grade page, free outside links for every subject: TVO Learn activities by curriculum strand, EQAO sample tests (Grades 3 and 6) and Waterloo's Problem of the Week (math, Grades 3–6). Links live in [`js/practice.js`](js/practice.js); `python3 tools/check_links.py` checks them (also run monthly). To hide them, set `SHOW_PRACTICE = false` in `js/app.js`
 - **Subject journeys** – how each subject builds from JK to Grade 6
 - **Compare two grades** – side by side, with "what changes" highlights
 - **Interview handout** – a printable one-page sheet for parent-teacher interviews

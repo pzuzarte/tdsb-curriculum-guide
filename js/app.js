@@ -16,7 +16,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261010a"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261010b"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -315,6 +315,28 @@
     return isK(gid) ? `#/official/${gid}/k` : `#/official/${gid}/${sid}`;
   }
 
+  // ---------- practice links: free outside activities for a grade and subject (js/practice.js) ----------
+  const SHOW_PRACTICE = true; // set to false to hide all practice links
+  function practiceItems(gid, sid) {
+    const P = window.PRACTICE;
+    if (!SHOW_PRACTICE || !P || isK(gid)) return [];
+    const n = +gid.slice(1), en = lang === "fr" ? ` (${t("pr.inEnglish")})` : "";
+    const items = [];
+    if ((sid === "lang" || sid === "math") && P.eqao[gid]) items.push({ href: P.eqao[gid][lang] || P.eqao[gid].en, src: "EQAO", text: t("pr.eqao", { g: n }) });
+    if (sid === "math" && P.potw.grades[gid]) items.push({ href: P.potw[lang] || P.potw.en, src: t("pr.cemc"), text: t("pr.potw", { l: P.potw.grades[gid] }) });
+    (P.tvo[sid] || []).filter(([, , only]) => !only || only.includes(n)).forEach(([handle, title]) => {
+      items.push({ href: `${P.tvoBase}g${n}-${handle}`, src: "TVO Learn", text: (typeof title === "string" ? title : title[n]) + en });
+    });
+    return items;
+  }
+  function practiceBlock(gid, sid) {
+    const items = practiceItems(gid, sid);
+    if (!items.length) return "";
+    return `<details class="practice"><summary>🧩 ${esc(t("pr.h", { n: items.length }))}</summary>
+      <ul>${items.map(i => `<li><a href="${esc(i.href)}" target="_blank" rel="noopener">${esc(i.text)} ↗</a> <span class="muted small">${esc(i.src)}</span></li>`).join("")}</ul>
+      <p class="muted small">${esc(t("pr.note"))}</p></details>`;
+  }
+
   function viewGrade(gid, focusSubject) {
     const g = gradeById[gid];
     if (!g) return notFound();
@@ -327,7 +349,8 @@
       <p class="muted">${esc(t("grade.kStrandsP"))}</p>
       <div class="grid grid-4 frames">${D.kindergartenFrames.map(f => `
         <div class="card"><h3>${f.icon} ${esc(f.name)}</h3><p>${esc(f.desc)}</p>${list(f.examples)}</div>`).join("")}</div>
-      <p><a class="btn ghost" href="#/official/${gid}/k">📘 ${esc(t("grade.kOfficial"))}</a></p>
+      <p class="page-actions"><a class="btn ghost" href="#/official/${gid}/k">📘 ${esc(t("grade.kOfficial"))}</a>
+        ${SHOW_PRACTICE && window.PRACTICE ? `<a class="btn ghost" href="${window.PRACTICE.tvoK}" target="_blank" rel="noopener">🧩 ${esc(t("pr.k"))} ↗</a>` : ""}</p>
       <h2>${esc(t("grade.kHow", { g: g.short }))}</h2>` : `<h2>${esc(t("grade.bySubject"))}</h2>`;
 
     const cards = D.subjects.map(s => {
@@ -339,6 +362,7 @@
           <p class="focus">${esc(e.focus)}</p>
           ${e.learn.length ? `<strong>${esc(t("grade.workOn"))}</strong>${list(e.learn)}` : ""}
           ${e.home.length ? `<strong>${esc(t("grade.helpHome"))}</strong>${list(e.home, "homes")}` : ""}
+          ${practiceBlock(gid, s.id)}
           <p class="card-links">
             ${showOfficial ? `<a href="${officialHref(gid, s.id)}">📘 ${esc(t("grade.official"))}</a>` : ""}
             <a href="#/subject/${s.id}">${esc(t("grade.journey", { s: s.name }))} →</a></p>

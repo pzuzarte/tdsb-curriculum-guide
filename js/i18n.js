@@ -33,6 +33,9 @@ window.I18N = {
     "grade.kStrandsP": "Kindergarten isn't split into subjects. Learning is organized into four areas (sometimes called frames) and taught mostly through play and inquiry. The revised Kindergarten program, in effect from September 2026, keeps play-based learning and adds a stronger, more explicit focus on early language and math, coding and science.",
     "grade.kOfficial": "Read the official Kindergarten expectations",
     "grade.kHow": "How each subject starts in {g}", "grade.bySubject": "Subject by subject",
+    "pr.h": "Practice activities ({n} free links)", "pr.eqao": "EQAO Grade {g} sample test and released questions", "pr.cemc": "University of Waterloo",
+    "pr.potw": "Problem of the Week (level {l}) and archive", "pr.inEnglish": "in English", "pr.k": "Kindergarten activities on TVO Learn",
+    "pr.note": "Free outside sites, not run by this guide or TDSB. TVO Learn activities follow the Ontario curriculum and are meant to be done with an adult.",
     "grade.workOn": "What they work on", "grade.helpHome": "Help at home", "grade.journey": "{s} journey", "grade.official": "Official expectations",
 
     "official.h1": "{s}: official expectations, {g}", "official.h1k": "{s}: official expectations",
@@ -223,6 +226,9 @@ window.I18N = {
     "grade.kStrandsP": "La maternelle n'est pas divisée en matières. L'apprentissage est organisé en quatre domaines et se fait surtout par le jeu et l'enquête. Le programme révisé de la maternelle, en vigueur depuis septembre 2026, conserve l'apprentissage par le jeu et accorde une place plus explicite à la langue, aux mathématiques, au codage et aux sciences.",
     "grade.kOfficial": "Lire les attentes officielles de la maternelle",
     "grade.kHow": "Comment chaque matière commence : {g}", "grade.bySubject": "Matière par matière",
+    "pr.h": "Activités pour s'exercer ({n} liens gratuits)", "pr.eqao": "OQRE {g}e année : test d'exemple et questions publiées", "pr.cemc": "Université de Waterloo",
+    "pr.potw": "Problème de la semaine (niveau {l}) et archives", "pr.inEnglish": "en anglais", "pr.k": "Activités de maternelle sur TVO Learn (en anglais)",
+    "pr.note": "Sites externes gratuits, qui ne relèvent ni de ce guide ni du TDSB. Les activités de TVO Learn suivent le curriculum de l'Ontario et se font avec un adulte.",
     "grade.workOn": "Ce qu'on y travaille", "grade.helpHome": "Aider à la maison", "grade.journey": "Progression : {s}", "grade.official": "Attentes officielles",
 
     "official.h1": "{s} : attentes officielles, {g}", "official.h1k": "{s} : attentes officielles",

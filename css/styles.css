@@ -651,3 +651,11 @@ details.how p { font-size: .9rem; color: var(--ink-2); margin: 6px 0; }
 .ac-meta { grid-area: meta; font-size: .8rem; color: var(--ink-2); }
 .ac-item .btn { grid-area: btn; margin: 0; white-space: nowrap; }
 .ac-more { padding: 8px 10px; }
+
+/* practice links in subject cards */
+.practice { margin: 10px 0 4px; border-top: 1px dashed var(--line, #ddd); padding-top: 8px; }
+.practice summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.practice ul { margin: 6px 0; padding-left: 18px; }
+.practice li { margin: 4px 0; }
+.practice .small { margin-left: 2px; }
+@media (pointer: coarse) { .practice summary, .practice li a { display: inline-block; padding: 6px 0; } }

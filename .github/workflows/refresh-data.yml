@@ -74,3 +74,7 @@ jobs:
 
             `tools/check_data.py` passed. Review the changes (look for a new school year in
             `js/schools.js` each fall), then merge to publish.
+
+      # Last, so a dead outside link never blocks the data pull request; a failure here shows as a red run.
+      - name: Check practice links (TVO Learn, University of Waterloo)
+        run: python3 tools/check_links.py
