@@ -16,7 +16,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261009h"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261010a"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -1389,9 +1389,10 @@
         mount(document.getElementById("cOdds"), w => scatterSVG(w, {
           label: t("city.oddsH"), x0: 0, x1: 40, y0: 0, y1: 100, xTicks: [0, 10, 20, 30, 40], yTicks: [0, 25, 50, 75, 100],
           xFmt: v => pctTxt(v), yFmt: v => v, xLabel: t("ctx.lowinc"), yLabel: m, fit: f,
+          // Low-income shares are mostly rounded to multiples of 5, so spread dots sideways; mirror at 0 so none fall left of the axis.
           pts: pts.map(p => {
             const hi = hiIndex(p.s);
-            return { x: Math.min(40, p.x + jitter(p.s.id, 1.4)), y: p.y, big: hi >= 0, color: SERIES[hi], cls: "rb-" + resBin(p.r), sid: p.s.id,
+            return { x: Math.min(40, Math.abs(p.x + jitter(p.s.id, 1.4))), y: p.y, big: hi >= 0, color: SERIES[hi], cls: "rb-" + resBin(p.r), sid: p.s.id,
               tip: t("city.oddsTip", { s: tipName(p.s), v: pctTxt(p.y), e: pctTxt(Math.round(p.exp)), d: signed(p.r), li: pctTxt(p.x) }) };
           })
         }));
