@@ -16,7 +16,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261011a"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261011b"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -1193,21 +1193,24 @@
 
   // ---------- C4: where each school sits among all TDSB schools ----------
   function stripChart(S, series, year) {
-    const rows = [...MEASURES.map((m, i) => ({ label: t("m." + m), val: s => (s.res[year] ? s.res[year][i] : null), ref: S.reference[year].tdsb[i], refLabel: t("sc.typTDSB") })),
-      { label: t("ctx.lowinc") + " (0-40%)", val: s => s.ctx.lowinc, max: 40, ctx: true },
-      { label: t("ctx.ell"), val: s => s.ctx.ell, ctx: true }];
+    const rows = [...MEASURES.map((m, i) => ({ label: t("m." + m), val: s => (s.res[year] ? s.res[year][i] : null), ref: S.reference[year].tdsb[i], refLabel: t("sc.typTDSB"), tip: "viz.stripTipRes" })),
+      { label: t("ctx.lowinc"), val: s => s.ctx.lowinc, ctx: true, tip: "viz.stripTipInc" },
+      { label: t("ctx.ell"), val: s => s.ctx.ell, ctx: true, tip: "viz.stripTipEll" }];
     return `${chartLegend(series, { noOntario: true })}<div class="strips">${rows.map(r => {
       const max = r.max || 100;
       const all = S.schools.map(s => ({ s, v: r.val(s) })).filter(o => o.v != null);
       const sorted = all.map(o => o.v).sort((a, b) => a - b);
       const med = medianOf(sorted);
-      const below = v => Math.round(100 * sorted.filter(x => x < v).length / sorted.length);
+      // Share of TDSB schools below, equal to and above a value (ties matter: many context values are rounded to 5s).
+      const split = v => { const n = sorted.length, lo = sorted.filter(x => x < v).length, hi = sorted.filter(x => x > v).length;
+        const pl = Math.round(100 * lo / n), ph = Math.round(100 * hi / n);
+        return { lo: pl, same: 100 - pl - ph, hi: ph }; };
       return `<div class="hb-row ${r.ctx ? "ctxrow" : ""}"><div class="hb-label">${esc(r.label)}</div>
         <div class="strip">${all.map(o => `<i style="left:${Math.min(100, o.v / max * 100)}%;top:${50 + jitter(o.s.id, 38)}%" data-sid="${o.s.id}" data-tip="${esc(o.s.name)}: ${pctTxt(o.v)}"></i>`).join("")}
           ${r.ctx ? `<span class="hb-ref r2" style="left:${med / max * 100}%" data-tip="${esc(t("sc.typCtx"))}: ${pctTxt(med)}"></span>`
             : (r.ref != null ? `<span class="hb-ref r1" style="left:${r.ref}%" data-tip="${esc(r.refLabel)}: ${pctTxt(r.ref)}"></span>` : "")}
           ${stackDots(series.map(s => ({ s, v: r.val(s.school) })).filter(o => o.v != null).map(o => ({ ...o, pos: Math.min(100, o.v / max * 100) })))
-            .map(o => `<b style="left:${o.pos}%;margin-top:${o.dy - 7}px;background:${o.s.color}" data-sid="${o.s.school.id}" data-tip="${esc(t("viz.stripTip", { s: o.s.label, v: pctTxt(o.v), p: below(o.v) }))}"></b>`).join("")}
+            .map(o => `<b style="left:${o.pos}%;margin-top:${o.dy - 7}px;background:${o.s.color}" data-sid="${o.s.school.id}" data-tip="${esc(t(r.tip, { s: o.s.label, v: pctTxt(o.v), ...split(o.v) }))}"></b>`).join("")}
         </div></div>`;
     }).join("")}${axisRow()}</div>
     <p class="muted small">${esc(t("viz.stripNote"))}</p><p class="muted small click-hint">👆 ${esc(t("viz.clickHint"))}</p>`;
