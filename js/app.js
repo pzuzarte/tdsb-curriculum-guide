@@ -16,7 +16,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261010b"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261011a"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -91,7 +91,7 @@
   const needOntario = () => loadScript(`js/schools-ontario.js?v=${ASSET_V}`).then(() => {
     const O = window.SCHOOLS_ON;
     if (!O._objs) {
-      O._objs = O.rows.map(r => ({ id: r[0], name: r[1], board: O.boards[r[2]], slug: O.boardSlugs[r[2]], fr: !!r[3], grades: r[4], lat: r[5], lon: r[6], lowinc: r[7], r: r.slice(8, 14), tdsb: O.boards[r[2]] === O.tdsb }));
+      O._objs = O.rows.map(r => ({ id: r[0], name: r[1], board: O.boards[r[2]], slug: O.boardSlugs[r[2]], fr: !!r[3], grades: r[4], lat: r[5], lon: r[6], lowinc: r[7], r: r.slice(8, 14), ctx: { lowinc: r[7], ell: r[14], newc: r[15], sped: r[16], nodeg: r[17] }, tdsb: O.boards[r[2]] === O.tdsb }));
       O._byId = Object.fromEntries(O._objs.map(o => [o.id, o]));
     }
     return O;
@@ -1059,13 +1059,37 @@
     const b = sxx ? sxy / sxx : 0, a = my - b * mx;
     return { a, b, at: x => a + b * x };
   }
-  // Each school's result compared with what is typical for TDSB schools with the same low-income share.
-  function expectedFor(S, year, mi) {
-    const pts = S.schools.filter(s => s.ctx.lowinc != null && s.res[year] && s.res[year][mi] != null)
-      .map(s => ({ s, x: s.ctx.lowinc, y: s.res[year][mi] }));
-    const f = fitLine(pts);
-    if (f) pts.forEach(p => { p.exp = f.at(p.x); p.r = p.y - p.exp; });
-    return { pts, f };
+  // Least squares with several predictors: returns a function from [x1, x2, ...] to the fitted value.
+  function fitMulti(rows, ys) {
+    const k = rows[0].length + 1, A = Array.from({ length: k }, () => Array(k + 1).fill(0));
+    rows.forEach((r, n) => { const x = [1, ...r]; for (let i = 0; i < k; i++) { for (let j = 0; j < k; j++) A[i][j] += x[i] * x[j]; A[i][k] += x[i] * ys[n]; } });
+    for (let i = 0; i < k; i++) {
+      let p = i; for (let r = i + 1; r < k; r++) if (Math.abs(A[r][i]) > Math.abs(A[p][i])) p = r;
+      [A[i], A[p]] = [A[p], A[i]];
+      if (!A[i][i]) return null;
+      for (let r = 0; r < k; r++) if (r !== i) { const f = A[r][i] / A[i][i]; for (let j = i; j <= k; j++) A[r][j] -= f * A[i][j]; }
+    }
+    const b = A.map((r, i) => r[k] / r[i]);
+    return x => b[0] + x.reduce((a, v, i) => a + v * b[i + 1], 0);
+  }
+  // "Expected" result for each school: what's typical for schools with the same low-income share (mode "inc"),
+  // or the same five community measures (mode "ctx": the measures "Schools like this one" uses).
+  const EXP_KEYS = { inc: ["lowinc"], ctx: ["lowinc", "ell", "newc", "sped", "nodeg"] };
+  function expectedPts(pts, mode) {
+    const keys = EXP_KEYS[mode] || EXP_KEYS.inc;
+    pts = pts.filter(p => keys.every(k => p.s.ctx && p.s.ctx[k] != null));
+    if (mode !== "ctx") {
+      pts.forEach(p => { p.x = p.s.ctx.lowinc; });
+      const f = fitLine(pts);
+      if (f) pts.forEach(p => { p.exp = f.at(p.x); p.r = p.y - p.exp; });
+      return { pts, f };
+    }
+    const pred = pts.length > 10 ? fitMulti(pts.map(p => keys.map(k => p.s.ctx[k])), pts.map(p => p.y)) : null;
+    if (pred) pts.forEach(p => { p.x = p.s.ctx.lowinc; p.exp = Math.max(0, Math.min(100, pred(keys.map(k => p.s.ctx[k])))); p.r = p.y - p.exp; });
+    return { pts, f: pred ? { a: 0, b: 1, at: v => v } : null, multi: true };
+  }
+  function expectedFor(S, year, mi, mode) {
+    return expectedPts(S.schools.filter(s => s.res[year] && s.res[year][mi] != null).map(s => ({ s, y: s.res[year][mi] })), mode);
   }
   const resBin = r => (r >= 15 ? "p2" : r >= 5 ? "p1" : r > -5 ? "z" : r > -15 ? "n1" : "n2");
   const signed = v => (v > 0 ? "+" : v < 0 ? "−" : "±") + Math.abs(Math.round(v));
@@ -1201,25 +1225,37 @@
     return sorted;
   }
 
-  // ---------- C3: subgroups (latest year) ----------
+  // ---------- C3: student groups, all reported years pooled ----------
+  // grp[k][mi] = [group n, group n at standard, school n, school n at standard, years] summed over the years in which
+  // EQAO reported the group (10+ students). "Everyone else" = the school's other students in those same years.
+  function groupVal(grp, k, mi) {
+    if (!grp) return null;
+    if (k === "ell_rest" || k === "sped_rest") {
+      const c = grp[k.split("_")[0]] && grp[k.split("_")[0]][mi];
+      return c && c[2] - c[0] > 0 ? { v: 100 * (c[3] - c[1]) / (c[2] - c[0]), n: c[2] - c[0], y: c[4] } : null;
+    }
+    const c = grp[k] && grp[k][mi];
+    return c && c[0] ? { v: 100 * c[1] / c[0], n: c[0], y: c[4] } : null;
+  }
   function subgroupChart(S, series, mi) {
-    const year = latestYear(S), R = S.reference[year];
-    const rows = [...series.map(s => ({ label: s.label, color: s.color, all: s.school.res[year] ? s.school.res[year][mi] : null, sub: s.school.sub })),
-      { label: t("sc.typTDSB"), color: "var(--ref1)", all: R.tdsb[mi], sub: Object.fromEntries(Object.keys(R.sub).map(k => [k, R.sub[k].tdsb])), ref: true },
-      { label: t("sc.typON"), color: "var(--ref2)", all: R.ontario[mi], sub: Object.fromEntries(Object.keys(R.sub).map(k => [k, R.sub[k].ontario])), ref: true }];
-    const panels = [["girls", "boys"], ["ell", "all"], ["sped", "all"]];
-    const val = (r, k) => (k === "all" ? r.all : (r.sub && r.sub[k] ? r.sub[k][mi] : null));
-    const lab = k => t("viz.sub." + k);
+    const G = S.groupRef || {};
+    const rows = [...series.map(s => ({ label: s.label, color: s.color, grp: s.school.grp })),
+      { label: "TDSB", color: "var(--ref1)", grp: G.tdsb, ref: true },
+      { label: "Ontario", color: "var(--ref2)", grp: G.ontario, ref: true }];
+    const panels = [["girls", "boys"], ["ell", "ell_rest"], ["sped", "sped_rest"]];
+    const lab = k => t("viz.sub." + (k.endsWith("_rest") ? "rest" : k));
+    const desc = o => (o ? t("viz.subN", { v: pctTxt(Math.round(o.v)), n: o.n.toLocaleString(lang === "fr" ? "fr-CA" : "en-CA"), y: o.y }) : t("sc.nr"));
     return `<div class="sg">${panels.map(([a, b]) => `
       <div class="sg-panel"><div class="sg-head"><span><i class="mk ma"></i>${esc(lab(a))}</span><span><i class="mk mb"></i>${esc(lab(b))}</span></div>
-        ${rows.map(r => { const va = val(r, a), vb = val(r, b);
-          const tip = `${r.label} -- ${lab(a)}: ${va == null ? t("sc.nr") : pctTxt(va)}; ${lab(b)}: ${vb == null ? t("sc.nr") : pctTxt(vb)}`;
-          const gap = va != null && vb != null ? signed(va - vb) : "";
-          return `<div class="sg-row ${r.ref ? "ref" : ""} ${va == null ? "nr" : ""}" data-tip="${esc(tip)}"><span class="lv-name">${r.ref ? "" : `<i class="sw" style="background:${r.color}"></i>`}${esc(r.label)}</span>
-            <div class="sg-track">${va != null && vb != null ? `<span class="sg-link" style="left:${Math.min(va, vb)}%;width:${Math.abs(va - vb)}%"></span>` : ""}
-              ${vb != null ? `<span class="mk mb" style="left:${vb}%;--c:${r.color}"></span>` : ""}
-              ${va != null ? `<span class="mk ma" style="left:${va}%;--c:${r.color}"></span>` : ""}</div>
-            <span class="sg-note">${va == null ? esc(t("viz.nrShort")) : gap}</span></div>`;
+        ${rows.map(r => { const oa = groupVal(r.grp, a, mi), ob = groupVal(r.grp, b, mi);
+          const va = oa && Math.round(oa.v), vb = ob && Math.round(ob.v);
+          const tip = `${r.label} -- ${lab(a)}: ${desc(oa)}; ${lab(b)}: ${desc(ob)}`;
+          const gap = oa && ob ? signed(va - vb) : "";
+          return `<div class="sg-row ${r.ref ? "ref" : ""} ${oa ? "" : "nr"}" data-tip="${esc(tip)}"><span class="lv-name">${r.ref ? "" : `<i class="sw" style="background:${r.color}"></i>`}${esc(r.label)}</span>
+            <div class="sg-track">${oa && ob ? `<span class="sg-link" style="left:${Math.min(va, vb)}%;width:${Math.abs(va - vb)}%"></span>` : ""}
+              ${ob ? `<span class="mk mb" style="left:${vb}%;--c:${r.color}"></span>` : ""}
+              ${oa ? `<span class="mk ma" style="left:${va}%;--c:${r.color}"></span>` : ""}</div>
+            <span class="sg-note">${oa ? gap : esc(t("viz.nrShort"))}</span></div>`;
         }).join("")}
         ${axisRow().replace("hb-axis", "hb-axis sg-axis")}
       </div>`).join("")}</div>`;
@@ -1354,7 +1390,7 @@
       <div class="card">${levelChart(S, series, year)}</div>
       <h2>${esc(t("viz.stripH", { y: yearLabel(year) }))}</h2>${howTo("viz.stripHow")}
       <div class="card">${stripChart(S, series, year)}</div>
-      <h2>${esc(t("viz.subH", { y: yearLabel(year) }))}</h2>${howTo("viz.subHow")}
+      <h2>${esc(t("viz.subH", { a: yearLabel(S.years[0]), b: yearLabel(S.years[S.years.length - 1]) }))}</h2>${howTo("viz.subHow")}
       <div class="card"><div class="controls inline"><label>${esc(t("viz.measure"))}<select id="sgMeasure">${measureOptions(5)}</select></label></div>
         <div id="sgOut">${subgroupChart(S, series, 5)}</div><p class="muted small">${esc(t("viz.subNote"))}</p></div>
       ${trk ? `<h2>${esc(t("trk.h"))}</h2>${howTo("trk.how")}<div class="card">${trk}</div>` : ""}
@@ -1373,7 +1409,7 @@
 
   function viewCity() {
     withData(needSchoolsFor([]), S => {
-      const st = { mi: 5, year: latestYear(S), sq: 0 };
+      const st = { mi: 5, year: latestYear(S), sq: 0, exp: "inc" };
       const by = schoolById(S);
       let sel = getCompare().filter(id => by[id]);
       main.innerHTML = `<div id="cityView">
@@ -1391,7 +1427,7 @@
         </div>
         <p class="small muted hl-line" id="hlLine">${sel.length ? `${esc(t("city.highlight"))} ${sel.map((id, i) => `<span class="tray-chip"><span class="sw" style="background:${SERIES[i]}"></span>${esc(by[id].name)}</span>`).join(" ")}`
             : esc(t("city.highlightNone"))}</p>
-        <section><h2>${esc(t("city.oddsH"))}</h2>${howTo("city.oddsHow")}<div class="card"><div id="cOddsSum" class="small"></div>${resLegend()}<div id="cOdds" class="mount"></div><p class="muted small click-hint">👆 ${esc(t("viz.clickHint"))}</p>
+        <section><h2>${esc(t("city.oddsH"))}</h2><div id="cOddsHow">${howTo("city.oddsHow")}</div><div class="card"><div class="controls inline"><label>${esc(t("city.expBasis"))}<select id="cExp"><option value="inc">${esc(t("city.exp.inc"))}</option><option value="ctx">${esc(t("city.exp.ctx"))}</option></select></label></div><div id="cOddsSum" class="small"></div>${resLegend()}<div id="cOdds" class="mount"></div><p class="muted small click-hint">👆 ${esc(t("viz.clickHint"))}</p>
           <details class="tv"><summary>${esc(t("city.oddsTable"))}</summary><div id="cOddsTbl"></div></details></div></section>
         <section><h2>${esc(t("city.mapH"))}</h2>${howTo("city.mapHow")}<div class="card">${scopeToggle()}<p class="muted small" id="cMapNote"></p>${resLegend()}<div id="cMap" class="map"></div><p class="muted small">${esc(t("sc.mapNote"))}</p></div></section>
         <section><h2>${esc(t("city.incomeH"))}</h2>${howTo("city.incomeHow")}<div class="card"><div id="cIncLegend"></div><div id="cIncome" class="mount"></div><div id="cIncTbl"></div></div></section>
@@ -1406,18 +1442,25 @@
       const hiIndex = s => sel.indexOf(s.id);
 
       function drawOdds() {
-        const { pts, f } = expectedFor(S, st.year, st.mi);
+        const { pts, f, multi } = expectedFor(S, st.year, st.mi, st.exp);
         const m = t("m." + MEASURES[st.mi]);
         const above = pts.filter(p => p.r >= 15).length, below = pts.filter(p => p.r <= -15).length;
-        document.getElementById("cOddsSum").innerHTML = f ? esc(t("city.oddsSum", { n: pts.length, a: above, b: below, slope: Math.abs(f.b * 10).toFixed(0) })) : "";
-        mount(document.getElementById("cOdds"), w => scatterSVG(w, {
+        document.getElementById("cOddsHow").innerHTML = howTo(multi ? "city.oddsHowCtx" : "city.oddsHow");
+        document.getElementById("cOddsSum").innerHTML = !f ? "" : multi ? esc(t("city.oddsSumCtx", { n: pts.length, a: above, b: below }))
+          : esc(t("city.oddsSum", { n: pts.length, a: above, b: below, slope: Math.abs(f.b * 10).toFixed(0) }));
+        const tipOf = p => t("city.oddsTip", { s: tipName(p.s), v: pctTxt(p.y), e: pctTxt(Math.round(p.exp)), d: signed(p.r), li: pctTxt(p.x) });
+        mount(document.getElementById("cOdds"), w => scatterSVG(w, multi ? {
+          // Five measures can't share one x-axis, so plot each school's expected result against its actual result.
+          label: t("city.oddsH"), x0: 0, x1: 100, y0: 0, y1: 100, xTicks: [0, 25, 50, 75, 100], yTicks: [0, 25, 50, 75, 100],
+          xFmt: v => pctTxt(v), yFmt: v => v, xLabel: t("city.expectedX", { m }), yLabel: m, fit: f,
+          pts: pts.map(p => { const hi = hiIndex(p.s); return { x: p.exp, y: p.y, big: hi >= 0, color: SERIES[hi], cls: "rb-" + resBin(p.r), sid: p.s.id, tip: tipOf(p) }; })
+        } : {
           label: t("city.oddsH"), x0: 0, x1: 40, y0: 0, y1: 100, xTicks: [0, 10, 20, 30, 40], yTicks: [0, 25, 50, 75, 100],
           xFmt: v => pctTxt(v), yFmt: v => v, xLabel: t("ctx.lowinc"), yLabel: m, fit: f,
           // Low-income shares are mostly rounded to multiples of 5, so spread dots sideways; mirror at 0 so none fall left of the axis.
           pts: pts.map(p => {
             const hi = hiIndex(p.s);
-            return { x: Math.min(40, Math.abs(p.x + jitter(p.s.id, 1.4))), y: p.y, big: hi >= 0, color: SERIES[hi], cls: "rb-" + resBin(p.r), sid: p.s.id,
-              tip: t("city.oddsTip", { s: tipName(p.s), v: pctTxt(p.y), e: pctTxt(Math.round(p.exp)), d: signed(p.r), li: pctTxt(p.x) }) };
+            return { x: Math.min(40, Math.abs(p.x + jitter(p.s.id, 1.4))), y: p.y, big: hi >= 0, color: SERIES[hi], cls: "rb-" + resBin(p.r), sid: p.s.id, tip: tipOf(p) };
           })
         }));
         const sorted = pts.slice().sort((a, b) => b.r - a.r);
@@ -1432,12 +1475,10 @@
       function drawCityMap(tdsbPts) {
         if (!mapApi) return;
         const note = document.getElementById("cMapNote");
-        if (mapScope !== "on") { note.textContent = ""; mapApi(tdsbPts || expectedFor(S, st.year, st.mi).pts, false); return; }
+        if (mapScope !== "on") { note.textContent = ""; mapApi(tdsbPts || expectedFor(S, st.year, st.mi, st.exp).pts, false); return; }
         needOntario().then(O => {
-          const pts = O._objs.filter(o => !o.fr && o.lowinc != null && o.r[st.mi] != null).map(o => ({ s: o, x: o.lowinc, y: o.r[st.mi] }));
-          const f = fitLine(pts);
-          pts.forEach(p => { p.exp = f.at(p.x); p.r = p.y - p.exp; });
-          note.textContent = t("city.onMapNote", { y: yearLabel(O.year), n: pts.length.toLocaleString(lang === "fr" ? "fr-CA" : "en-CA") }) + (st.year !== O.year ? " " + t("city.onYearNote", { y: yearLabel(O.year) }) : "");
+          const { pts } = expectedPts(O._objs.filter(o => !o.fr && o.r[st.mi] != null).map(o => ({ s: o, y: o.r[st.mi] })), st.exp);
+          note.textContent = t(st.exp === "ctx" ? "city.onMapNoteCtx" : "city.onMapNote", { y: yearLabel(O.year), n: pts.length.toLocaleString(lang === "fr" ? "fr-CA" : "en-CA") }) + (st.year !== O.year ? " " + t("city.onYearNote", { y: yearLabel(O.year) }) : "");
           mapApi(pts, true);
         }).catch(() => { note.textContent = t("loadError"); });
       }
@@ -1553,6 +1594,7 @@
       const view = document.getElementById("cityView");
       document.getElementById("cMeasure").addEventListener("change", ev => { st.mi = +ev.target.value; drawAll(); });
       document.getElementById("cYear").addEventListener("change", ev => { st.year = ev.target.value; drawOdds(); });
+      document.getElementById("cExp").addEventListener("change", ev => { st.exp = ev.target.value; drawOdds(); });
       document.getElementById("cSq").addEventListener("change", ev => { st.sq = +ev.target.value; drawSq(); });
       // After a school is added or removed anywhere on this page, refresh the highlights everywhere.
       onCompareChange = () => {

@@ -39,7 +39,26 @@ SIF_DATASET = "https://data.ontario.ca/api/3/action/package_show?id=d85f68c5-fcb
 MEASURES = [("3", "R"), ("3", "W"), ("3", "M"), ("6", "R"), ("6", "W"), ("6", "M")]
 LEVELS = ["L4", "L3", "L2", "L1", "NE1"]
 SUBJ_NAME = {"R": "Read", "W": "Write", "M": "Math"}
+ONTARIO_CTX = ["lowinc", "ell", "newc", "sped", "nodeg"]  # context kept in the compact all-Ontario rows
 SUBGROUPS = {"boys": "G1", "girls": "G2", "ell": "E1", "sped": "S1"}  # EQAO codes
+
+
+def group_counts(r, subj, full):
+    """Counts for pooling a student group across years: {group: [n, n at standard, school n, school n at standard]}.
+    EQAO hides both the counts and the percentages of groups under 10 students, so only years in which a
+    group was reported can be added up. Percentages are of fully participating students."""
+    v = pct(r.get(f"pctOverall{subj}_L34"))
+    if not full or v is None:
+        return {}
+    g = [(num(r.get(f"cntOverall{subj}_{c}_Part")), num(r.get(f"cntOverall{subj}_{c}_L34"))) for c in ("G1", "G2")]
+    # Whole-school count at the standard: boys + girls when they add up to everyone, otherwise from the percentage.
+    all_l34 = g[0][1] + g[1][1] if all(x is not None for p in g for x in p) and g[0][0] + g[1][0] == full else round(v * full / 100)
+    out = {}
+    for k, code in SUBGROUPS.items():
+        n, l34 = num(r.get(f"cntOverall{subj}_{code}_Part")), num(r.get(f"cntOverall{subj}_{code}_L34"))
+        if n and l34 is not None and n <= full:
+            out[k] = [n, l34, full, all_l34]
+    return out
 # Student questionnaire: share answering "Yes, I agree" (code 3)
 SQ_ITEMS = [("likeRead", "pctR_Interest_LikeRead3"), ("likeMath", "pctM_Interest_LikeMath3"),
             ("goodReader", "pctR_Confidence_GoodReader3"), ("goodMath", "pctM_Confidence_GoodAtMath3")]
@@ -111,7 +130,7 @@ def school_directory():
         ontario.append({"id": str(d[SIF["num"]]).strip(), "name": str(d[SIF["name"]]).strip(), "board": d.get(SIF["board"]) or "",
                         "lang": "fr" if d.get(SIF["lang"]) == "French" else "en", "grades": d.get(SIF["grades"]) or "",
                         "lat": round(float(d[SIF["lat"]]), 4), "lon": round(float(d[SIF["lon"]]), 4),
-                        "lowinc": num(d.get(CONTEXT["lowinc"]))})
+                        **{k: num(d.get(CONTEXT[k])) for k in ONTARIO_CTX}})
         sid = str(d[SIF["num"]]).strip()
         schools[sid] = {
             "board": d.get(SIF["board"]) or "", "boardNo": str(d.get("Board Number") or "").lstrip("B"),
@@ -238,10 +257,10 @@ def write_ontario(ontario, files, latest, dir_year):
     rows = []
     for o in sorted(ontario, key=lambda x: x["name"]):
         rows.append([o["id"], o["name"], bidx[o["board"]], 1 if o["lang"] == "fr" else 0, o["grades"], o["lat"], o["lon"], o["lowinc"]]
-                    + res.get((o["id"].zfill(6), o["lang"]), [None] * 6))
-    with_res = sum(1 for r in rows if any(v is not None for v in r[8:]))
+                    + res.get((o["id"].zfill(6), o["lang"]), [None] * 6) + [o[k] for k in ONTARIO_CTX[1:]])
+    with_res = sum(1 for r in rows if any(v is not None for v in r[8:14]))
     data = {"year": latest, "contextYear": dir_year, "boards": boards, "boardSlugs": [board_slug(b) for b in boards], "tdsb": BOARD_NAME,
-            "fields": ["id", "name", "board", "fr", "grades", "lat", "lon", "lowinc", "g3r", "g3w", "g3m", "g6r", "g6w", "g6m"],
+            "fields": ["id", "name", "board", "fr", "grades", "lat", "lon", "lowinc", "g3r", "g3w", "g3m", "g6r", "g6w", "g6m"] + ONTARIO_CTX[1:],
             "rows": rows}
     dest = os.path.join(ROOT, "js", "schools-ontario.js")
     with open(dest, "w", encoding="utf-8") as f:
@@ -264,6 +283,8 @@ def main():
     board_ref = {}  # board mident -> {year: [6 x L34]}
     latest = years[-1]
     extra = {}  # sid -> {"dist": {year: [...]}, "n": {year: [...]}, "sub": {...}, "sq": [...]}
+    grp = {}  # sid or "tdsb"/"ontario" -> {group: [6 x [n, n L34, school n, school n L34, years]]} pooled over all years
+    new_grp = lambda: {k: [[0] * 5 for _ in range(6)] for k in SUBGROUPS}
     for year in years:
         ref = {"tdsb": [None] * 6, "ontario": [None] * 6,
                "dist": {"tdsb": [None] * 6, "ontario": [None] * 6},
@@ -290,6 +311,13 @@ def main():
                         who = "ontario"
                     elif kind == "B" and r.get("BoardMident") == BOARD_MIDENT:
                         who = "tdsb"
+                    full = num(r.get(f"cntFullyParticipating_{SUBJ_NAME[subj]}"))
+                    counted = who or (kind == "S" and (r.get("Suppressed") or "0") == "0")
+                    if counted:
+                        gkey = who or (r.get("SchoolMident") or "").strip().zfill(6)
+                        for k, c in group_counts(r, subj, full).items():
+                            cell = grp.setdefault(gkey, new_grp())[k][i]
+                            cell[:] = [a + b for a, b in zip(cell, c + [1])]
                     if who:
                         ref[who][i] = v
                         ref["dist"][who][i] = levels
@@ -335,6 +363,11 @@ def main():
                 extra.setdefault(sid, {"dist": {}, "n": {}, "sub": {}}).setdefault("sq", [None] * 8)[off:off + 4] = vals
     print(f"questionnaire {latest}: TDSB {sq_ref['tdsb']}, Ontario {sq_ref['ontario']}")
 
+    # Pooled group counts: keep only measures with at least one reported year
+    def packed(g):
+        out = {k: [c if c[4] else None for c in cells] for k, cells in g.items()}
+        return {k: v for k, v in out.items() if any(v)}
+
     # Why a value is blank: 'nr' = small group not reported, 'na' = school has no students in that grade
     for s in schools.values():
         for year, vals in s["res"].items():
@@ -344,6 +377,8 @@ def main():
                     codes[grade_block] = ["na"] * 3
             if any(codes):
                 s["why"][year] = codes
+        if packed(grp.get(s["id"], {})):
+            s["grp"] = packed(grp[s["id"]])
         ex = extra.get(s["id"])
         if ex:
             s["dist"] = ex["dist"]
@@ -362,6 +397,7 @@ def main():
         "reference": reference,
         "sqItems": [k for k, _ in SQ_ITEMS],
         "sqReference": sq_ref,
+        "groupRef": {"tdsb": packed(grp.get("tdsb", {})), "ontario": packed(grp.get("ontario", {}))},
         "schools": sorted((x for x in schools.values() if x["board"] == BOARD_NAME), key=lambda x: x["name"]),
     }
     data["classRef"] = class_sizes(schools)
