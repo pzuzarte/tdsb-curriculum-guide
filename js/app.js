@@ -16,7 +16,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261011b"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261012a"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -134,7 +134,23 @@
     lb.lang = lang === "en" ? "fr" : "en";
     document.getElementById("sources").innerHTML = `<strong>${esc(t("footer.sources"))}</strong> ` +
       D.sources.map(s => `<a href="${s.url}" target="_blank" rel="noopener">${esc(s.name)}</a>`).join(" · ");
-    document.getElementById("reviewed").textContent = t("footer.reviewed", { d: D.lastReviewed });
+    document.getElementById("reviewed").textContent = t("footer.reviewed", { d: D.lastReviewed }) + (COUNT_VISITS ? " " + t("footer.count") : "");
+  }
+
+  // ---------- anonymous visit counts (GoatCounter, no cookies) ----------
+  // The site changes pages without reloading, so each page is counted here. Only the page name and plain ids
+  // (grade, subject, school number) are sent -- never search text, compare lists or anything a parent types.
+  const COUNT_VISITS = true; // set to false (or remove the GoatCounter script in index.html) to stop counting
+  const COUNT_KEEP = { grade: 2, subject: 1, official: 3, compare: 2, handout: 1, tracker: 1, research: 1, schools: 1, school: 1 };
+  function countVisit() {
+    if (!COUNT_VISITS) return;
+    const [page = "", ...rest] = location.hash.replace(/^#\/?/, "").split("/");
+    const keep = rest.slice(0, COUNT_KEEP[page] || 0).filter(p => /^[a-z0-9-]{1,16}$/i.test(p));
+    const path = "/" + [page, ...keep].filter(Boolean).join("/");
+    const send = () => { const gc = window.goatcounter; if (gc && gc.count) gc.count({ path, title: path === "/" ? "Home" : path.slice(1) }); };
+    const gc = window.goatcounter;
+    if (gc && gc.count) send();
+    else { const el = document.getElementById("goatcounter"); if (el) el.addEventListener("load", send, { once: true }); } // script still loading
   }
 
   // ---------- light / dark theme ----------
@@ -2103,6 +2119,7 @@
   document.addEventListener("click", ev => { if (ev.target.closest("[data-print]")) window.print(); });
 
   setLang(initialLang());
-  window.addEventListener("hashchange", route);
+  window.addEventListener("hashchange", () => { route(); countVisit(); });
   route();
+  countVisit();
 })();

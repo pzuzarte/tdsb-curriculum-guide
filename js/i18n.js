@@ -7,7 +7,7 @@ window.I18N = {
     "nav.overview": "Overview", "nav.grades": "Grades", "nav.subjects": "Subjects", "nav.compare": "Compare grades",
     "nav.schools": "Schools & EQAO", "nav.report": "Report cards", "nav.milestones": "Milestones", "nav.tracker": "Tracker", "nav.glossary": "Glossary",
     "footer.about_html": "<strong>About this guide.</strong> This is an independent, plain-language summary of the Ontario curriculum as taught in Toronto District School Board (TDSB) schools. It is not an official TDSB or Ministry of Education resource. Official curriculum expectations are reproduced from the Ministry of Education (© King's Printer for Ontario). School results: <a href=\"https://www.eqao.com/about-eqao/open-data/\" target=\"_blank\" rel=\"noopener\">EQAO open data</a>. School locations and context: Ontario Ministry of Education, <a href=\"https://data.ontario.ca/dataset/school-information-and-student-demographics\" target=\"_blank\" rel=\"noopener\">School information and student demographics</a> (Open Government Licence – Ontario).",
-    "footer.sources": "Official sources:", "footer.reviewed": "Content last reviewed {d}.",
+    "footer.sources": "Official sources:", "footer.reviewed": "Content last reviewed {d}.", "footer.count": "Visits are counted anonymously (GoatCounter, no cookies); nothing you type is sent.",
     "loading": "Loading...", "loadError": "Sorry, this content could not be loaded. Check your connection and try again.",
     "notFound": "Page not found", "backHome": "Back to the overview", "print": "Print",
 
@@ -206,7 +206,7 @@ window.I18N = {
     "nav.overview": "Aperçu", "nav.grades": "Années", "nav.subjects": "Matières", "nav.compare": "Comparer des années",
     "nav.schools": "Écoles et OQRE", "nav.report": "Bulletins", "nav.milestones": "Étapes clés", "nav.tracker": "Suivi", "nav.glossary": "Glossaire",
     "footer.about_html": "<strong>À propos de ce guide.</strong> Ce guide est un résumé indépendant, en langage simple, du curriculum de l'Ontario tel qu'il est enseigné dans les écoles du Toronto District School Board (TDSB). Il ne s'agit pas d'une ressource officielle du TDSB ou du ministère de l'Éducation. Les attentes officielles sont reproduites à partir du ministère de l'Éducation (© Imprimeur du Roi pour l'Ontario). Résultats des écoles : <a href=\"https://www.eqao.com/a-propos-de-oqre/donnees-ouvertes/?lang=fr\" target=\"_blank\" rel=\"noopener\">données ouvertes de l'OQRE</a>. Emplacement et contexte des écoles : ministère de l'Éducation de l'Ontario, <a href=\"https://data.ontario.ca/fr/dataset/school-information-and-student-demographics\" target=\"_blank\" rel=\"noopener\">Renseignements sur les écoles et données démographiques sur les élèves</a> (Licence du gouvernement ouvert – Ontario).",
-    "footer.sources": "Sources officielles :", "footer.reviewed": "Contenu révisé en {d}.",
+    "footer.sources": "Sources officielles :", "footer.reviewed": "Contenu révisé en {d}.", "footer.count": "Les visites sont comptées de façon anonyme (GoatCounter, sans témoins); rien de ce que vous tapez n'est transmis.",
     "loading": "Chargement...", "loadError": "Désolé, ce contenu n'a pas pu être chargé. Vérifiez votre connexion et réessayez.",
     "notFound": "Page introuvable", "backHome": "Retour à l'aperçu", "print": "Imprimer",
 

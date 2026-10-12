@@ -19,6 +19,9 @@ Available in **English and French** (language button in the header, or add `?lan
 - **Learning tracker** – checklist saved in the browser (localStorage only)
 - **Glossary** and site-wide **search**
 
+## Visit counts
+Anonymous page counts with [GoatCounter](https://www.goatcounter.com/) (no cookies), dashboard at <https://pzuzarte.goatcounter.com>. Each page change is counted by `countVisit()` in `js/app.js`, sending only the page name and plain ids (grade, subject, school number) -- never search text, compare lists or anything typed. Local previews aren't counted. To stop counting, set `COUNT_VISITS = false` in `js/app.js` or remove the GoatCounter script from `index.html`.
+
 ## Run locally
 No build step. Open `index.html`, or serve the folder:
 
