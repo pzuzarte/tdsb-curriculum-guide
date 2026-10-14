@@ -13,10 +13,11 @@
   const COMPARE_KEY = "tdsb-guide-compare";
   const HANDOUT_KEY = "tdsb-guide-handout";
   const MYEQAO_KEY = "tdsb-guide-myeqao";
+  const MYCCAT_KEY = "tdsb-guide-myccat";
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261012a"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261014a"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -394,6 +395,7 @@
         <button class="btn ghost" data-print>🖨️ ${esc(t("grade.print"))}</button>
         <a class="btn ghost" href="#/handout/${gid}">💬 ${esc(t("grade.handout"))}</a>
         <a class="btn ghost" href="#/tracker/${gid}">✅ ${esc(t("grade.tracker", { g: g.short }))}</a>
+        ${gid === "g3" ? `<a class="btn ghost" href="#/my-ccat">🧠 ${esc(t("cc.h1"))}</a>` : ""}
         ${next ? `<a class="btn ghost" href="#/compare/${gid}/${next.id}">↔️ ${esc(t("grade.compare"))}</a>` : ""}
       </div>
       <div class="grid grid-2">
@@ -672,7 +674,7 @@
         const items = D.milestones.filter(m => m.grade === gr.id);
         if (!items.length) return "";
         return `<section class="tl-group"><h3>${gr.id !== "before" ? `<a href="#/grade/${gr.id}">${esc(gr.name)}</a>` : esc(gr.name)}</h3>
-          ${items.map(m => `<div class="card ms"><span class="pill">${esc(m.tag)}</span><h3 class="mt6">${esc(m.title)}</h3><p class="mb0">${esc(m.text)}</p></div>`).join("")}</section>`;
+          ${items.map(m => `<div class="card ms"><span class="pill">${esc(m.tag)}</span><h3 class="mt6">${esc(m.title)}</h3><p class="mb0">${esc(m.text)}</p>${m.link ? `<p class="mt6 mb0"><a href="${m.link}">${esc(m.linkText)} →</a></p>` : ""}</div>`).join("")}</section>`;
       }).join("")}</div>`;
   }
 
@@ -2041,13 +2043,126 @@
     });
   }
 
+  // ---------- "My child's CCAT results": private explainer, nothing leaves the browser ----------
+  // CCAT-7 is the Canadian edition of the Cognitive Abilities Test (CogAT Form 7) with Canadian norms: standard age
+  // scores (SAS) have mean 100 and SD 16; stanines group percentile ranks 1-9. Conversions here are approximate.
+  const CCAT_BATT = ["v", "q", "n", "c"];
+  const STANINE_CUTS = [4, 11, 23, 40, 60, 77, 89, 96]; // lowest percentile rank of stanines 2..9
+  const normCdf = z => { const t1 = 1 / (1 + 0.2316419 * Math.abs(z)), d = 0.3989423 * Math.exp(-z * z / 2);
+    const p = d * t1 * (0.3193815 + t1 * (-0.3565638 + t1 * (1.781478 + t1 * (-1.821256 + t1 * 1.330274)))); return z > 0 ? 1 - p : p; };
+  const normInv = p => { let lo = -5, hi = 5; for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; if (normCdf(m) < p) lo = m; else hi = m; } return (lo + hi) / 2; };
+  const stanineOf = pr => 1 + STANINE_CUTS.filter(c => pr >= c).length;
+  // One entered score -> { sas, pr, st } (sas null when only a stanine is known)
+  function ccatScore(type, raw) {
+    const v = parseFloat(String(raw).replace(",", "."));
+    if (!isFinite(v)) return null;
+    if (type === "sas") { if (v < 50 || v > 160) return null; const pr = Math.min(99, Math.max(1, Math.round(100 * normCdf((v - 100) / 16)))); return { sas: Math.round(v), pr, st: stanineOf(pr) }; }
+    if (type === "pr") { if (v < 1 || v > 99) return null; const pr = Math.round(v); return { sas: Math.round(100 + 16 * normInv(pr / 100)), pr, st: stanineOf(pr) }; }
+    if (v < 1 || v > 9 || v % 1) return null;
+    const lo = v === 1 ? 1 : STANINE_CUTS[v - 2], hi = v === 9 ? 99 : STANINE_CUTS[v - 1] - 1;
+    return { sas: null, pr: null, prLo: lo, prHi: hi, st: v };
+  }
+  const ccatBand = st => (st >= 9 ? "vh" : st >= 7 ? "ah" : st >= 4 ? "av" : st >= 2 ? "bl" : "vl");
+
+  // Bell curve with the stanine bands and one marker per battery
+  function ccatCurve(w, scores) {
+    const H = 190, L = 12, R = 12, T = 16, B = 40;
+    const x = z => L + (w - L - R) * (z + 3) / 6;
+    const yv = z => T + (H - T - B) * (1 - Math.exp(-z * z / 2));
+    let path = "";
+    for (let i = 0; i <= 120; i++) { const z = -3 + i / 20; path += (i ? "L" : "M") + x(z).toFixed(1) + "," + yv(z).toFixed(1); }
+    const bands = [1, ...STANINE_CUTS, 100].map(c => normInv(Math.min(0.9999, Math.max(0.0001, c / 100))));
+    const bandEls = bands.slice(0, -1).map((z0, i) => { const a = Math.max(-3, z0), b = Math.min(3, bands[i + 1]);
+      return `<rect x="${x(a).toFixed(1)}" y="${T}" width="${(x(b) - x(a)).toFixed(1)}" height="${H - T - B}" class="ccat-band b${i % 2}"/>
+        <text x="${((x(a) + x(b)) / 2).toFixed(1)}" y="${H - B + 14}" class="ax" text-anchor="middle">${i + 1}</text>`; }).join("");
+    const ticks = [-2, -1, 0, 1, 2].map(z => `<text x="${x(z).toFixed(1)}" y="${H - 6}" class="ax" text-anchor="middle">${100 + 16 * z}</text>`).join("");
+    const placed = [];
+    const marks = CCAT_BATT.map((k, i) => ({ k, i, o: scores[k] })).filter(m => m.o).map(m => {
+      const pr = m.o.pr != null ? m.o.pr : (m.o.prLo + m.o.prHi) / 2;
+      const z = Math.max(-2.9, Math.min(2.9, normInv(pr / 100)));
+      let cy = yv(z) - 9; while (placed.some(p => Math.abs(p[0] - x(z)) < 14 && Math.abs(p[1] - cy) < 14)) cy -= 15;
+      placed.push([x(z), cy]);
+      return `<line x1="${x(z).toFixed(1)}" x2="${x(z).toFixed(1)}" y1="${cy.toFixed(1)}" y2="${H - B}" class="ccat-stem" style="stroke:var(--s${m.i + 1})"/>
+        <circle cx="${x(z).toFixed(1)}" cy="${cy.toFixed(1)}" r="7" style="fill:var(--s${m.i + 1})" data-tip="${esc(t("cc.batt." + m.k))}: ${esc(t("cc.prTxt", { p: m.o.pr != null ? m.o.pr : m.o.prLo + "-" + m.o.prHi }))}"/>`;
+    }).join("");
+    return `<svg width="${w}" height="${H}" viewBox="0 0 ${w} ${H}" class="viz" role="img" aria-label="${esc(t("cc.curveH"))}">
+      ${bandEls}<path d="${path}" class="ccat-curve"/>${ticks}${marks}</svg>`;
+  }
+
+  function viewMyCcat() {
+    const st = Object.assign({ type: "sas", v: "", q: "", n: "", c: "" }, getJSON(MYCCAT_KEY, {}));
+    const save = () => setJSON(MYCCAT_KEY, st);
+    const types = ["sas", "pr", "st"];
+    main.innerHTML = `
+      <p><a href="#/grade/g3">← ${esc(gradeById.g3.name)}</a></p>
+      <h1>🧠 ${esc(t("cc.h1"))}</h1>
+      <p class="lead">${esc(t("cc.lead"))}</p>
+      <p class="muted small">🔒 ${esc(t("cc.privacy"))}</p>
+      <div class="card me-form" id="ccForm">
+        <label>${esc(t("cc.type"))}<select id="ccType">${types.map(k => `<option value="${k}" ${st.type === k ? "selected" : ""}>${esc(t("cc.type." + k))}</option>`).join("")}</select></label>
+        <fieldset><legend>${esc(t("cc.scores"))}</legend>${CCAT_BATT.map(k => `<label>${esc(t("cc.batt." + k))}<input data-b="${k}" inputmode="decimal" size="5" value="${esc(st[k])}" autocomplete="off"></label>`).join("")}</fieldset>
+        <button class="btn ghost" id="ccClear" type="button">${esc(t("me.clear"))}</button>
+      </div>
+      <p class="muted small" id="ccHint"></p>
+      <div id="ccOut" aria-live="polite"></div>
+      <h2>${esc(t("cc.whatH"))}</h2>
+      <div class="grid grid-3">${["v", "q", "n"].map((k, i) => `<div class="card"><h3><i class="sw" style="background:var(--s${i + 1})"></i> ${esc(t("cc.batt." + k))}</h3><p>${esc(t("cc.about." + k))}</p></div>`).join("")}</div>
+      <h2>${esc(t("cc.nextH"))}</h2>
+      <ol class="steps">${t("cc.next").map(x => `<li>${esc(x)}</li>`).join("")}</ol>
+      <div class="grid grid-2">
+        <div class="card"><h3>💬 ${esc(t("cc.askH"))}</h3><ul>${t("cc.ask").map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>
+        <div class="card"><h3>⚖️ ${esc(t("cc.keepH"))}</h3><ul>${t("cc.keep").map(x => `<li>${esc(x)}</li>`).join("")}</ul>
+          <p><a href="#/research/gifted">${esc(t("cc.research"))} →</a></p></div>
+      </div>
+      <p class="muted small">${esc(t("cc.note"))} <a href="https://www.tdsb.on.ca/Learning-Equity-and-Well-Being/Special-Education-and-Inclusion/Universal-Screening" target="_blank" rel="noopener">${esc(t("cc.tdsbLink"))} ↗</a></p>`;
+
+    const renderOut = () => {
+      const scores = {}; let bad = 0;
+      CCAT_BATT.forEach(k => { if (String(st[k]).trim() === "") return; const o = ccatScore(st.type, st[k]); if (o) scores[k] = o; else bad++; });
+      document.getElementById("ccHint").textContent = bad ? t("cc.bad." + st.type) : t("cc.hint." + st.type);
+      const keys = Object.keys(scores);
+      const out = document.getElementById("ccOut");
+      if (!keys.length) { out.innerHTML = `<p class="muted">${esc(t("cc.empty"))}</p>`; return; }
+      const prTxt = o => t("cc.prTxt", { p: o.pr != null ? o.pr : o.prLo + "-" + o.prHi });
+      const cards = keys.map(k => { const o = scores[k], band = ccatBand(o.st), i = CCAT_BATT.indexOf(k);
+        return `<div class="card me-card ccat-${band}"><h3><i class="sw" style="background:var(--s${i + 1})"></i> ${esc(t("cc.batt." + k))}</h3>
+          <p><strong>${esc(t("cc.band." + band))}</strong></p>
+          <p>${esc(t("cc.prMeaning", { p: o.pr != null ? o.pr : o.prLo + "-" + o.prHi }))}</p>
+          <p class="muted small">${esc(o.sas != null ? t("cc.conv", { sas: o.sas, pr: prTxt(o), st: o.st }) : t("cc.convSt", { pr: prTxt(o), st: o.st }))}</p></div>`; }).join("");
+      // Profile: do the three reasoning areas differ? (2+ stanines apart is worth a conversation)
+      const parts = ["v", "q", "n"].filter(k => scores[k]);
+      let profile = "";
+      if (parts.length >= 2) {
+        const sorted = parts.slice().sort((a, b) => scores[b].st - scores[a].st);
+        const hi = sorted[0], lo = sorted[sorted.length - 1], gap = scores[hi].st - scores[lo].st;
+        profile = gap >= 2 ? t("cc.uneven", { hi: t("cc.batt." + hi), lo: t("cc.batt." + lo), g: gap }) : t("cc.even");
+        if (gap >= 2 && lo === "v" && scores.n) profile += " " + t("cc.verbalLow");
+      }
+      const top = keys.some(k => scores[k].st >= 9);
+      out.innerHTML = `<div class="card"><h3>${esc(t("cc.curveH"))}</h3>
+          <div class="legend">${keys.map(k => `<span><i class="sw" style="background:var(--s${CCAT_BATT.indexOf(k) + 1})"></i>${esc(t("cc.batt." + k))}</span>`).join("")}</div>
+          <div id="ccCurve" class="mount"></div>
+          <p class="muted small">${esc(t("cc.curveNote"))}</p></div>
+        <div class="grid grid-2 mt6">${cards}</div>
+        ${profile ? `<div class="note"><strong>${esc(t("cc.profileH"))}</strong> ${esc(profile)}</div>` : ""}
+        ${top ? `<div class="note">${esc(t("cc.topNote"))}</div>` : ""}
+        <div class="note">${esc(t("cc.errorNote"))}</div>`;
+      mount(document.getElementById("ccCurve"), w => ccatCurve(w, scores));
+    };
+    const form = document.getElementById("ccForm");
+    form.addEventListener("input", ev => { const el = ev.target; if (el.dataset.b) { st[el.dataset.b] = el.value; save(); renderOut(); } });
+    form.addEventListener("change", ev => { if (ev.target.id === "ccType") { st.type = ev.target.value; save(); renderOut(); } });
+    document.getElementById("ccClear").onclick = () => { setJSON(MYCCAT_KEY, {}); viewMyCcat(); };
+    renderOut();
+  }
+
   function notFound() {
     main.innerHTML = `<h1>${esc(t("notFound"))}</h1><p><a href="#/">${esc(t("backHome"))}</a></p>`;
   }
 
   // ---------- router ----------
   const NAV_FOR = { "": "", grade: "grade", official: "grade", handout: "grade", subject: "subject", compare: "compare",
-    schools: "schools", school: "schools", "compare-schools": "schools", "my-eqao": "schools",
+    schools: "schools", school: "schools", "compare-schools": "schools", "my-eqao": "schools", "my-ccat": "milestones",
     report: "report", milestones: "milestones", tracker: "tracker", glossary: "glossary", research: "research" };
 
   function afterRender() {
@@ -2086,6 +2201,7 @@
       case "school": viewSchool(a); break;
       case "compare-schools": viewCompareSchools(a); break;
       case "my-eqao": viewMyEqao(a); break;
+      case "my-ccat": viewMyCcat(); break;
       default: notFound();
     }
     afterRender();

@@ -16,6 +16,7 @@ Available in **English and French** (language button in the header, or add `?lan
 - **Milestones** – EQAO, Grade 3 gifted screening, French Immersion windows, transitions
 - **Schools & EQAO** – map (TDSB or all Ontario schools) and sortable table, school profiles for any Ontario elementary school, "schools like this one" (closest schools by community context), side-by-side comparison of up to 4 schools from any board (five-year averages and ranges, level breakdowns, where each school sits among all TDSB schools, results for girls/boys, English learners and special education, Grade 3 to Grade 6 tracking of the same students), and a private "my child's EQAO results" explainer
 - **Toronto overview** – results vs. what's expected given low-income share (scatter, table and map), results by school income level over time, year-to-year change vs. school size (funnel plot), TDSB vs. Ontario by student group, and what students say in EQAO's questionnaire vs. results
+- **My child's CCAT results** – private, in-browser explainer for TDSB's Grade 3 CCAT-7 screening: enter standard age scores, percentile ranks or stanines and see plain-language meaning, a bell curve, profile differences, and what happens next (IST/SST, assessment, IPRC). Nothing is sent or stored outside the browser
 - **Learning tracker** – checklist saved in the browser (localStorage only)
 - **Glossary** and site-wide **search**
 
