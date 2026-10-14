@@ -333,6 +333,9 @@ def main():
                         if year == latest and not suppressed:
                             for k in SUBGROUPS:
                                 ex["sub"][k][i] = subs[k]
+                        # Girls and boys for every year: the site keeps Grade 3 three years ago and Grade 6 now (cohort charts)
+                        if not suppressed:
+                            ex.setdefault("gen", {}).setdefault(year, [None] * 12)[2 * i:2 * i + 2] = [subs["girls"], subs["boys"]]
         reference[year] = ref
         matched = 0
         for sid, vals in res.items():
@@ -385,6 +388,10 @@ def main():
             s["n"] = ex["n"]
             if any(v is not None for vals in ex.get("sub", {}).values() for v in vals):
                 s["sub"] = ex["sub"]
+            # [girls, boys] x 6 measures, for the Grade 3 year three years back and the latest Grade 6 year
+            gen = {y: v for y, v in ex.get("gen", {}).items() if y in (years[-4:-3] + years[-1:]) and any(x is not None for x in v)}
+            if gen:
+                s["gen"] = gen
             if ex.get("sq") and any(v is not None for v in ex["sq"]):
                 s["sq"] = ex["sq"]
 

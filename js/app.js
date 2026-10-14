@@ -17,7 +17,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261014a"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261014d"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -855,7 +855,9 @@
   const findSchool = id => schoolCache[id];
   // Load TDSB data plus whatever boards the given (or compared) schools belong to.
   const needTracking = () => loadScript(`js/tracking.js?v=${ASSET_V}`).then(() => window.TRACKING, () => null);
-  const needSchoolsFor = ids => () => needSchools().then(S => Promise.all([ensureSchools(S, (ids || []).concat(getCompare())), needTracking()]).then(() => S));
+  const needFacilities = () => loadScript(`js/facilities.js?v=${ASSET_V}`).then(() => window.FACILITIES, () => null);
+  const needSchoolsFor = ids => () => needSchools().then(S => Promise.all([ensureSchools(S, (ids || []).concat(getCompare())), needTracking(),
+    ids && ids.length ? needFacilities() : null]).then(() => S));
   const schoolById = S => { registerTDSB(S); return schoolCache; };
   const getCompare = () => getJSON(COMPARE_KEY, []).slice(0, 4);
   const setCompare = ids => setJSON(COMPARE_KEY, ids.slice(0, 4));
@@ -960,7 +962,7 @@
   }
   function chartLegend(series, o = {}) {
     return `<div class="legend">${series.map(s => `<span><i class="sw" style="background:${s.color}"></i>${esc(s.label)}</span>`).join("")}
-      <span><i class="refkey r1"></i>${esc(o.tdsbLabel || t("sc.typTDSB"))}</span>${o.noOntario ? "" : `<span><i class="refkey r2"></i>${esc(t("sc.typON"))}</span>`}</div>`;
+      <span><i class="refkey r1"></i>${esc(o.tdsbLabel || t("sc.typTDSB"))}</span>${o.noOntario ? "" : `<span><i class="refkey r2"></i>${esc(o.onLabel || t("sc.typON"))}</span>`}</div>`;
   }
 
   // Small-multiple trend lines, one per measure. The COVID gap breaks the line.
@@ -1094,6 +1096,13 @@
   // or the same five community measures (mode "ctx": the measures "Schools like this one" uses).
   const EXP_KEYS = { inc: ["lowinc"], ctx: ["lowinc", "ell", "newc", "sped", "nodeg"] };
   function expectedPts(pts, mode) {
+    if (mode === "loi") { // TDSB's Learning Opportunities Index rank (1 = highest need), TDSB schools only
+      pts = pts.filter(p => { const r = facOf(p.s); return r && r.lt && r.lt.loi; });
+      pts.forEach(p => { p.x = p.s.ctx.lowinc; p.loi = facOf(p.s).lt.loi; });
+      const f = fitLine(pts.map(p => ({ x: p.loi, y: p.y })));
+      if (f) pts.forEach(p => { p.exp = f.at(p.loi); p.r = p.y - p.exp; });
+      return { pts, f, loi: true };
+    }
     const keys = EXP_KEYS[mode] || EXP_KEYS.inc;
     pts = pts.filter(p => keys.every(k => p.s.ctx && p.s.ctx[k] != null));
     if (mode !== "ctx") {
@@ -1303,6 +1312,29 @@
     return { html, draw };
   }
 
+  // Same cohort comparison for girls and boys separately (EQAO reports each group when it has 10+ students).
+  // school.gen[year] = [girls, boys] x 6 measures, flattened.
+  function genderCohortCharts(S, series) {
+    const ys = S.years;
+    if (ys.length < 4) return null;
+    const y3 = ys[ys.length - 4], y6 = ys[ys.length - 1];
+    if (!series.some(s => s.school.gen)) return null;
+    const xs = [t("viz.g3in", { y: yearLabel(y3) }), t("viz.g6in", { y: yearLabel(y6) })];
+    const gv = (school, y, i, g) => (school.gen && school.gen[y] ? school.gen[y][2 * i + g] : null);
+    const ref = (y, i, g, who) => { const R = S.reference[y].sub[g ? "boys" : "girls"]; return R ? R[who][i] : null; };
+    const rows = [0, 1].map(g => `<h3 class="mt6">${esc(t(g ? "viz.sub.boys" : "viz.sub.girls"))}</h3><div class="grid grid-3">${[0, 1, 2].map(k =>
+      `<figure class="card trend"><figcaption>${esc(t("me.mt")[["r", "w", "m"][k]])}</figcaption><div id="gcoh${g}${k}" class="mount"></div></figure>`).join("")}</div>`).join("");
+    const html = `${chartLegend(series, { tdsbLabel: t("viz.genRefTdsb"), onLabel: t("viz.genRefOn") })}${rows}<p class="muted small">${esc(t("viz.genCohortNote", { a: yearLabel(y3), b: yearLabel(y6) }))}</p>`;
+    const draw = () => [0, 1].forEach(g => [0, 1, 2].forEach(k => mount(document.getElementById(`gcoh${g}${k}`), w => linesSVG(w, {
+      xs, y0: 0, y1: 100, h: 200, r: 18, label: `${t(g ? "viz.sub.boys" : "viz.sub.girls")}: ${t("me.mt")[["r", "w", "m"][k]]}`,
+      series: [
+        { label: `Ontario (${t(g ? "viz.sub.boys" : "viz.sub.girls")})`, cls: "ref r2", vals: [ref(y3, k, g, "ontario"), ref(y6, k + 3, g, "ontario")] },
+        { label: `TDSB (${t(g ? "viz.sub.boys" : "viz.sub.girls")})`, cls: "ref r1", vals: [ref(y3, k, g, "tdsb"), ref(y6, k + 3, g, "tdsb")] },
+        ...series.map(s => ({ label: s.label, color: s.color, vals: [gv(s.school, y3, k, g), gv(s.school, y6, k + 3, g)] }))]
+    }))));
+    return { html, draw };
+  }
+
   // ---------- class sizes (Ontario open data, latest school year) ----------
   function classSizeSection(S, schools) {
     const R = S.classRef;
@@ -1321,6 +1353,59 @@
         <tbody>${rowsDef.map(([lab, f]) => `<tr><th scope="row">${esc(lab)}</th>${cols.map(c => `<td data-label="${esc(c.label)}" class="${c.ref ? "muted" : ""}">${c.c ? f(c.c) : "--"}</td>`).join("")}</tr>`).join("")}</tbody>
       </table></div>
       <p class="muted small">${esc(t("cs.note"))} <a href="https://www.ontario.ca/laws/regulation/120132" target="_blank" rel="noopener">${esc(t("cs.reg"))} ↗</a></p>`;
+  }
+
+  // ---------- buildings and facilities (TDSB schools only; js/facilities.js) ----------
+  const facOf = s => (window.FACILITIES && s && window.FACILITIES.schools[s.id]) || null;
+  // TDSB medians, for the reference column
+  function facMedians() {
+    const F = window.FACILITIES;
+    if (!F) return {};
+    if (F._med) return F._med;
+    const all = Object.values(F.schools);
+    const med = f => medianOf(all.map(f).filter(v => v != null).sort((a, b) => a - b));
+    const yr = new Date().getFullYear();
+    return (F._med = {
+      fci: med(r => r.fciNow && r.fciNow.v), age: med(r => r.lt && r.lt.built && yr - r.lt.built),
+      util: med(r => r.lt && r.lt.util && r.lt.util[0]), home: med(r => r.lt && r.lt.home),
+      urgent: med(r => r.fciNow && r.fciNow.v != null ? r.fciNow.count.Urgent : null), n: all.length,
+      loiMax: Math.max(...all.map(r => (r.lt && r.lt.loi) || 0))
+    });
+  }
+  // Share of TDSB elementary schools in better condition (lower FCI) than this one
+  const fciRank = v => { const all = Object.values(window.FACILITIES.schools).map(r => r.fciNow && r.fciNow.v).filter(x => x != null);
+    return Math.round(100 * all.filter(x => x < v).length / all.length); };
+  function facilitiesSection(S, schools) {
+    const F = window.FACILITIES;
+    if (!F || !schools.some(facOf)) return "";
+    const med = facMedians(), yr = new Date().getFullYear();
+    const L = window.FACILITIES.sources;
+    const cell = (s, f) => { const r = facOf(s); return r ? f(r, s) : `<span class="muted">${esc(t("fac.notTdsb"))}</span>`; };
+    const lt = (r, f) => (r.lt ? f(r.lt) : "--");
+    const n0 = v => (v == null ? "--" : Math.round(v).toLocaleString(lang === "fr" ? "fr-CA" : "en-CA"));
+    const num1 = v => (v == null ? "--" : (Math.round(v * 10) / 10).toLocaleString(lang === "fr" ? "fr-CA" : "en-CA"));
+    const rowsDef = [
+      ["fac.fci", r => r.fciNow.v == null ? "--" : `<strong>${num1(r.fciNow.v)} %</strong><br><span class="muted small">${esc(t("fac.fciRank", { p: fciRank(r.fciNow.v) }))}</span>`, `${num1(med.fci)} %`],
+      ["fac.repairs", r => r.fciNow.v == null ? "--" : esc(t("fac.repairsTxt", { u: r.fciNow.count.Urgent, h: r.fciNow.count.High, m: r.fciNow.count.Medium + r.fciNow.count.Low }))
+        + (r.fciNow.urgent.length ? `<details class="tv"><summary>${esc(t("fac.urgentList"))}</summary><ul class="small">${r.fciNow.urgent.map(x => `<li>${esc(x)}</li>`).join("")}</ul></details>` : ""),
+        esc(t("fac.medUrgent", { n: n0(med.urgent) }))],
+      ["fac.built", r => lt(r, x => x.built ? `${x.built} <span class="muted small">(${t("fac.yearsOld", { n: yr - x.built })})</span>` : "--"), esc(t("fac.yearsOld", { n: n0(med.age) }))],
+      ["fac.access", r => lt(r, x => x.access ? esc(t("fac.acc." + x.access)) : "--") + ` <a class="small" href="${L.access.replace("{n}", r.schno)}" target="_blank" rel="noopener">${esc(t("fac.details"))} ↗</a>`, ""],
+      ["fac.full", r => lt(r, x => x.util ? `<strong>${x.util[0]} %</strong> <span class="muted small">(${t("fac.enrolCap", { e: n0(x.enrol), c: n0(x.cap) })})</span>` : "--"), `${n0(med.util)} %`],
+      ["fac.fullLater", r => lt(r, x => x.util ? esc(t("fac.proj", { a: x.util[1], b: x.util[2] })) : "--"), ""],
+      ["fac.port", r => lt(r, x => n0(x.port)), ""],
+      ["fac.home", r => lt(r, x => x.home == null ? "--" : `${n0(x.home)} %`), `${n0(med.home)} %`],
+      ["fac.ooa", r => lt(r, x => x.ooa ? esc(t("fac.ooa." + x.ooa)) : "--"), ""],
+      ["fac.extras", r => lt(r, x => [x.pool ? t("fac.pool") : "", x.eco ? t("fac.eco", { l: x.eco }) : ""].filter(Boolean).map(esc).join(", ") || "--"), ""],
+      ["fac.loi", r => lt(r, x => x.loi ? esc(t("fac.loiTxt", { r: n0(x.loi), n: n0(med.loiMax) })) : "--"), ""],
+      ["fac.water", r => (r.water && r.water.n ? esc(t(r.water.exc ? "fac.waterExc" : "fac.waterOk", { y: r.water.year, n: r.water.n, e: r.water.exc })) : esc(t("fac.waterNone", { y: r.water ? r.water.year || "" : "" })))
+        + ` <a class="small" href="${L.water.replace("{n}", r.schno)}" target="_blank" rel="noopener">${esc(t("fac.details"))} ↗</a>`, ""]];
+    return `<h2>${esc(t("fac.h"))}</h2>${howTo("fac.how")}
+      <div class="table-wrap"><table class="data stack fac">
+        <thead><tr><th></th>${schools.map(s => `<th>${esc(s.name)}</th>`).join("")}<th>${esc(t("fac.tdsbTypical"))}</th></tr></thead>
+        <tbody>${rowsDef.map(([k, f, ref]) => `<tr><th scope="row">${esc(t(k))}</th>${schools.map(s => `<td data-label="${esc(s.name)}">${cell(s, f)}</td>`).join("")}<td class="muted" data-label="${esc(t("fac.tdsbTypical"))}">${ref || ""}</td></tr>`).join("")}</tbody>
+      </table></div>
+      <p class="muted small">${esc(t("fac.note", { y: F.ltpasYear }))} ${schools.filter(facOf).map(s => `<a href="${L.fci.replace("{n}", facOf(s).schno)}" target="_blank" rel="noopener">${esc(t("fac.fciLink", { s: s.name }))} ↗</a>`).join(" · ")}</p>`;
   }
 
   // ---------- "Schools like this one": nearest schools by community context, same board ----------
@@ -1403,6 +1488,7 @@
   function deepDive(S, series) {
     const year = latestYear(S);
     const coh = cohortCharts(S, series);
+    const gcoh = genderCohortCharts(S, series);
     const trk = trackingChart(series);
     const html = `
       <h2>${esc(t("viz.rangeH"))}</h2>${howTo("viz.rangeHow")}
@@ -1415,11 +1501,13 @@
       <div class="card"><div class="controls inline"><label>${esc(t("viz.measure"))}<select id="sgMeasure">${measureOptions(5)}</select></label></div>
         <div id="sgOut">${subgroupChart(S, series, 5)}</div><p class="muted small">${esc(t("viz.subNote"))}</p></div>
       ${trk ? `<h2>${esc(t("trk.h"))}</h2>${howTo("trk.how")}<div class="card">${trk}</div>` : ""}
-      ${coh ? `<h2>${esc(t("viz.cohortH"))}</h2>${howTo("viz.cohortHow")}${coh.html}` : ""}`;
+      ${coh ? `<h2>${esc(t("viz.cohortH"))}</h2>${howTo("viz.cohortHow")}${coh.html}` : ""}
+      ${gcoh ? `<h2>${esc(t("viz.genCohortH"))}</h2>${howTo("viz.genCohortHow")}${gcoh.html}` : ""}`;
     const wire = () => {
       const sel = document.getElementById("sgMeasure");
       if (sel) sel.addEventListener("change", () => { document.getElementById("sgOut").innerHTML = subgroupChart(S, series, +sel.value); });
       if (coh) coh.draw();
+      if (gcoh) gcoh.draw();
     };
     return { html, wire };
   }
@@ -1448,7 +1536,7 @@
         </div>
         <p class="small muted hl-line" id="hlLine">${sel.length ? `${esc(t("city.highlight"))} ${sel.map((id, i) => `<span class="tray-chip"><span class="sw" style="background:${SERIES[i]}"></span>${esc(by[id].name)}</span>`).join(" ")}`
             : esc(t("city.highlightNone"))}</p>
-        <section><h2>${esc(t("city.oddsH"))}</h2><div id="cOddsHow">${howTo("city.oddsHow")}</div><div class="card"><div class="controls inline"><label>${esc(t("city.expBasis"))}<select id="cExp"><option value="inc">${esc(t("city.exp.inc"))}</option><option value="ctx">${esc(t("city.exp.ctx"))}</option></select></label></div><div id="cOddsSum" class="small"></div>${resLegend()}<div id="cOdds" class="mount"></div><p class="muted small click-hint">👆 ${esc(t("viz.clickHint"))}</p>
+        <section><h2>${esc(t("city.oddsH"))}</h2><div id="cOddsHow">${howTo("city.oddsHow")}</div><div class="card"><div class="controls inline"><label>${esc(t("city.expBasis"))}<select id="cExp"><option value="inc">${esc(t("city.exp.inc"))}</option><option value="ctx">${esc(t("city.exp.ctx"))}</option><option value="loi">${esc(t("city.exp.loi"))}</option></select></label></div><div id="cOddsSum" class="small"></div>${resLegend()}<div id="cOdds" class="mount"></div><p class="muted small click-hint">👆 ${esc(t("viz.clickHint"))}</p>
           <details class="tv"><summary>${esc(t("city.oddsTable"))}</summary><div id="cOddsTbl"></div></details></div></section>
         <section><h2>${esc(t("city.mapH"))}</h2>${howTo("city.mapHow")}<div class="card">${scopeToggle()}<p class="muted small" id="cMapNote"></p>${resLegend()}<div id="cMap" class="map"></div><p class="muted small">${esc(t("sc.mapNote"))}</p></div></section>
         <section><h2>${esc(t("city.incomeH"))}</h2>${howTo("city.incomeHow")}<div class="card"><div id="cIncLegend"></div><div id="cIncome" class="mount"></div><div id="cIncTbl"></div></div></section>
@@ -1463,14 +1551,22 @@
       const hiIndex = s => sel.indexOf(s.id);
 
       function drawOdds() {
-        const { pts, f, multi } = expectedFor(S, st.year, st.mi, st.exp);
+        if (st.exp === "loi" && !window.FACILITIES) { needFacilities().then(F => { if (F) drawOdds(); }); return; }
+        const { pts, f, multi, loi } = expectedFor(S, st.year, st.mi, st.exp);
         const m = t("m." + MEASURES[st.mi]);
         const above = pts.filter(p => p.r >= 15).length, below = pts.filter(p => p.r <= -15).length;
-        document.getElementById("cOddsHow").innerHTML = howTo(multi ? "city.oddsHowCtx" : "city.oddsHow");
+        document.getElementById("cOddsHow").innerHTML = howTo(multi ? "city.oddsHowCtx" : loi ? "city.oddsHowLoi" : "city.oddsHow");
+        const loiMax = loi ? Math.max(...pts.map(p => p.loi)) : 0;
         document.getElementById("cOddsSum").innerHTML = !f ? "" : multi ? esc(t("city.oddsSumCtx", { n: pts.length, a: above, b: below }))
+          : loi ? esc(t("city.oddsSumLoi", { n: pts.length, a: above, b: below, d: Math.abs(Math.round(f.b * 100)) }))
           : esc(t("city.oddsSum", { n: pts.length, a: above, b: below, slope: Math.abs(f.b * 10).toFixed(0) }));
         const tipOf = p => t("city.oddsTip", { s: tipName(p.s), v: pctTxt(p.y), e: pctTxt(Math.round(p.exp)), d: signed(p.r), li: pctTxt(p.x) });
-        mount(document.getElementById("cOdds"), w => scatterSVG(w, multi ? {
+        mount(document.getElementById("cOdds"), w => scatterSVG(w, loi ? {
+          // Reversed axis so that, as on the low-income chart, further right means higher need.
+          label: t("city.oddsH"), x0: loiMax, x1: 1, y0: 0, y1: 100, xTicks: [400, 300, 200, 100, 1].filter(v => v <= loiMax), yTicks: [0, 25, 50, 75, 100],
+          xFmt: v => String(v), yFmt: v => v, xLabel: t("city.loiX"), yLabel: m, fit: f,
+          pts: pts.map(p => { const hi = hiIndex(p.s); return { x: p.loi, y: p.y, big: hi >= 0, color: SERIES[hi], cls: "rb-" + resBin(p.r), sid: p.s.id, tip: tipOf(p) + " " + t("city.loiTip", { r: p.loi }) }; })
+        } : multi ? {
           // Five measures can't share one x-axis, so plot each school's expected result against its actual result.
           label: t("city.oddsH"), x0: 0, x1: 100, y0: 0, y1: 100, xTicks: [0, 25, 50, 75, 100], yTicks: [0, 25, 50, 75, 100],
           xFmt: v => pctTxt(v), yFmt: v => v, xLabel: t("city.expectedX", { m }), yLabel: m, fit: f,
@@ -1498,8 +1594,8 @@
         const note = document.getElementById("cMapNote");
         if (mapScope !== "on") { note.textContent = ""; mapApi(tdsbPts || expectedFor(S, st.year, st.mi, st.exp).pts, false); return; }
         needOntario().then(O => {
-          const { pts } = expectedPts(O._objs.filter(o => !o.fr && o.r[st.mi] != null).map(o => ({ s: o, y: o.r[st.mi] })), st.exp);
-          note.textContent = t(st.exp === "ctx" ? "city.onMapNoteCtx" : "city.onMapNote", { y: yearLabel(O.year), n: pts.length.toLocaleString(lang === "fr" ? "fr-CA" : "en-CA") }) + (st.year !== O.year ? " " + t("city.onYearNote", { y: yearLabel(O.year) }) : "");
+          const { pts } = expectedPts(O._objs.filter(o => !o.fr && o.r[st.mi] != null).map(o => ({ s: o, y: o.r[st.mi] })), st.exp === "loi" ? "inc" : st.exp);
+          note.textContent = (st.exp === "loi" ? t("city.onLoiNote") + " " : "") + t(st.exp === "ctx" ? "city.onMapNoteCtx" : "city.onMapNote", { y: yearLabel(O.year), n: pts.length.toLocaleString(lang === "fr" ? "fr-CA" : "en-CA") }) + (st.year !== O.year ? " " + t("city.onYearNote", { y: yearLabel(O.year) }) : "");
           mapApi(pts, true);
         }).catch(() => { note.textContent = t("loadError"); });
       }
@@ -1639,7 +1735,7 @@
     tab = tab === "table" ? "table" : "map";
     withData(needSchoolsFor([]), S => {
       const year = latestYear(S);
-      const state = { q: "", sort: "name", dir: 1, near: null };
+      const state = { q: "", sort: "name", dir: 1, near: null, view: "res" };
       main.innerHTML = `<div id="schoolsView">
         <h1>🏫 ${esc(t("sc.h1"))}</h1>
         <p class="lead">${esc(t("sc.lead"))}</p>
@@ -1662,7 +1758,8 @@
         <p class="muted small" id="count"></p>
         ${tab === "map" ? `${scopeToggle()}<p class="muted small" id="scopeNote"></p>
           <div id="map" class="map"></div><p class="muted small">${esc(t("sc.mapNote"))}</p><div id="mapList" class="grid grid-3"></div>`
-          : `<p class="muted small">${esc(t("sc.sortHint"))} ${esc(t("sc.year"))}: ${yearLabel(year)}.</p><div class="table-wrap" id="tbl"></div>`}
+          : `<div class="seg" role="group" aria-label="${esc(t("fac.tblView"))}"><button type="button" data-tview="res" aria-pressed="true">${esc(t("fac.tblRes"))}</button><button type="button" data-tview="bld" aria-pressed="false">🏗️ ${esc(t("fac.tblBld"))}</button></div>
+            <p class="muted small" id="tblNote">${esc(t("sc.sortHint"))} ${esc(t("sc.year"))}: ${yearLabel(year)}.</p><div class="table-wrap" id="tbl"></div>`}
         <p class="muted small">${esc(t("sc.typNote"))}</p></div>`;
       const view = document.getElementById("schoolsView");
 
@@ -1678,11 +1775,21 @@
       const refreshTray = () => { document.getElementById("trayWrap").innerHTML = compareTray(S); };
       let mapApi = null;
 
+      // Buildings view: TDSB facility data (loaded on first use)
+      const BLD = [["fci", "fac.colFci"], ["built", "fac.colBuilt"], ["full", "fac.colFull"], ["full33", "fac.colFull33"], ["port", "fac.colPort"],
+        ["access", "fac.colAccess"], ["home", "fac.colHome"], ["loi", "fac.colLoi"]];
+      const bldVal = (s, k) => { const r = facOf(s); if (!r) return null; const x = r.lt || {};
+        return k === "fci" ? r.fciNow.v : k === "built" ? x.built : k === "full" ? (x.util ? x.util[0] : null) : k === "full33" ? (x.util ? x.util[2] : null)
+          : k === "port" ? x.port : k === "access" ? (x.access ? { yes: 2, some: 1, no: 0 }[x.access] : null) : k === "home" ? x.home : k === "loi" ? x.loi : null; };
+      const bldTxt = (s, k) => { const v = bldVal(s, k); if (v == null) return "--";
+        if (k === "access") return esc(t("fac.acc." + facOf(s).lt.access));
+        return k === "fci" ? (Math.round(v * 10) / 10).toLocaleString(lang === "fr" ? "fr-CA" : "en-CA") : (k === "full" || k === "full33" || k === "home") ? v + " %" : String(v); };
       function renderTable() {
+        if (state.view === "bld" && !window.FACILITIES) { needFacilities().then(F => { if (F) renderTable(); }); return; }
         const rows = filtered();
         const key = state.sort, mi = MEASURES.indexOf(key);
         const val = s => key === "name" ? s.name : key === "dist" ? s._d : key === "enrol" ? s.enrol :
-          key === "lowinc" || key === "ell" ? s.ctx[key] : (s.res[year] ? s.res[year][mi] : null);
+          key === "lowinc" || key === "ell" ? s.ctx[key] : BLD.some(b => b[0] === key) ? bldVal(s, key) : (s.res[year] ? s.res[year][mi] : null);
         rows.sort((a, b) => {
           const va = val(a), vb = val(b);
           if (va == null && vb == null) return 0;
@@ -1691,8 +1798,9 @@
           return (typeof va === "string" ? va.localeCompare(vb) : va - vb) * state.dir;
         });
         const ids = getCompare();
+        const bld = state.view === "bld";
         const cols = [["name", t("sc.name")], ...(state.near ? [["dist", "km"]] : []), ["grades", t("sc.grades")], ["enrol", t("sc.enrol")],
-          ...MEASURES.map(m => [m, t("m." + m)]), ["lowinc", t("sc.lowinc")], ["ell", t("sc.ell")]];
+          ...(bld ? BLD.map(([k, l]) => [k, t(l)]) : [...MEASURES.map(m => [m, t("m." + m)]), ["lowinc", t("sc.lowinc")], ["ell", t("sc.ell")]])];
         const th = ([k, label]) => k === "grades" ? `<th>${esc(label)}</th>` :
           `<th aria-sort="${state.sort === k ? (state.dir > 0 ? "ascending" : "descending") : "none"}"><button class="sort" data-sort="${k}">${esc(label)}${state.sort === k ? (state.dir > 0 ? " ▲" : " ▼") : ""}</button></th>`;
         document.getElementById("tbl").innerHTML = `<label class="m-only m-sort">${esc(t("sc.sortBy"))}
@@ -1704,8 +1812,10 @@
             <th scope="row"><a href="#/school/${s.id}">${esc(s.name)}</a></th>
             ${state.near ? `<td data-label="km">${s._d.toFixed(1)}</td>` : ""}
             <td data-label="${esc(t("sc.grades"))}">${esc(s.grades)}</td><td data-label="${esc(t("sc.enrol"))}">${s.enrol == null ? "--" : s.enrol}</td>
-            ${MEASURES.map((m, i) => { const v = s.res[year] ? s.res[year][i] : null; const lab = esc(t("m." + m)); return v == null ? `<td class="muted" data-label="${lab}" title="${esc(reasonText(s, year, i))}">--</td>` : `<td data-label="${lab}">${v}</td>`; }).join("")}
-            <td data-label="${esc(t("sc.lowinc"))}">${s.ctx.lowinc == null ? "--" : s.ctx.lowinc}</td><td data-label="${esc(t("sc.ell"))}">${s.ctx.ell == null ? "--" : s.ctx.ell}</td></tr>`).join("")}</tbody></table>`;
+            ${bld ? BLD.map(([k, l]) => `<td data-label="${esc(t(l))}" class="${bldVal(s, k) == null ? "muted" : ""}">${bldTxt(s, k)}</td>`).join("") + "</tr>"
+              : MEASURES.map((m, i) => { const v = s.res[year] ? s.res[year][i] : null; const lab = esc(t("m." + m)); return v == null ? `<td class="muted" data-label="${lab}" title="${esc(reasonText(s, year, i))}">--</td>` : `<td data-label="${lab}">${v}</td>`; }).join("")
+              + `<td data-label="${esc(t("sc.lowinc"))}">${s.ctx.lowinc == null ? "--" : s.ctx.lowinc}</td><td data-label="${esc(t("sc.ell"))}">${s.ctx.ell == null ? "--" : s.ctx.ell}</td></tr>`}`).join("")}</tbody></table>`;
+        document.getElementById("tblNote").textContent = bld ? t("fac.tblNote", { y: window.FACILITIES.ltpasYear }) : `${t("sc.sortHint")} ${t("sc.year")}: ${yearLabel(year)}.`;
         document.getElementById("sortSel").addEventListener("change", ev => { state.sort = ev.target.value; state.dir = (state.sort === "name" || state.sort === "dist") ? 1 : -1; renderTable(); });
         document.getElementById("count").textContent = t("sc.showing", { n: rows.length, t: S.schools.length });
       }
@@ -1861,6 +1971,14 @@
           (mapScope === "on" ? needOntario() : Promise.resolve()).then(renderMapList).catch(() => { document.getElementById("scopeNote").textContent = t("loadError"); });
           return;
         }
+        const tv = ev.target.closest("[data-tview]");
+        if (tv) {
+          state.view = tv.dataset.tview;
+          view.querySelectorAll("[data-tview]").forEach(b => b.setAttribute("aria-pressed", String(b === tv)));
+          if (state.view === "res" && BLD.some(b => b[0] === state.sort)) state.sort = "name";
+          if (state.view === "bld" && MEASURES.concat(["lowinc", "ell"]).includes(state.sort)) state.sort = "name";
+          renderTable(); return;
+        }
         const sb = ev.target.closest("[data-sort]");
         if (sb) { const k = sb.dataset.sort; state.dir = state.sort === k ? -state.dir : (k === "name" || k === "dist" ? 1 : -1); state.sort = k; renderTable(); return; }
         if (ev.target.closest("[data-clear]")) { setCompare([]); refreshTray(); rerender(); return; }
@@ -1911,6 +2029,7 @@
         ${dd.html}
         ${similarSection(S, s)}
         ${classSizeSection(S, [s])}
+        ${facilitiesSection(S, [s])}
         <h2>${esc(t("sc.contextH"))}</h2>
         <p class="muted">${esc(t("sc.contextP", { y: yearLabel(S.contextYear) }))}</p>
         ${contextTable(S, [s])}
@@ -1964,6 +2083,7 @@
         ${dd.html}
         <p><a class="btn ghost" href="#/schools/city">📊 ${esc(t("city.see"))}</a></p>
         ${classSizeSection(S, schools)}
+        ${facilitiesSection(S, schools)}
         <h2>${esc(t("sc.ctxCompare"))}</h2>
         <p class="muted">${esc(t("sc.contextP", { y: yearLabel(S.contextYear) }))}</p>
         ${contextTable(S, schools)}

@@ -75,6 +75,17 @@ if os.path.exists(os.path.join(ROOT, "js", "tracking.js")):
         check(have >= 200, f"tracking.js: only {have} schools with tracking data")
         check(T["reference"].get("tdsb") and T["reference"].get("ontario"), "tracking.js: missing TDSB/Ontario reference")
 
+# TDSB buildings and facilities (optional)
+if os.path.exists(os.path.join(ROOT, "js", "facilities.js")):
+    F = load("js/facilities.js", "window.FACILITIES")
+    if F:
+        rows = list(F["schools"].values())
+        fci = [r["fciNow"]["v"] for r in rows if r["fciNow"]["v"] is not None]
+        check(len(fci) >= 400, f"facilities.js: only {len(fci)} schools with an FCI value")
+        check(all(0 <= v <= 150 for v in fci), "facilities.js: FCI value out of range")
+        check(sum(1 for r in rows if r.get("lt")) >= 400, "facilities.js: fewer than 400 schools matched to LTPAS data")
+        check(sum(1 for r in rows if r["water"]["n"]) >= 50, "facilities.js: very few schools with water results")
+
 if problems:
     print("DATA CHECK FAILED:")
     for p in problems:
