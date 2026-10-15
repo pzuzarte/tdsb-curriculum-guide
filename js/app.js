@@ -17,7 +17,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261014d"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261014e"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -1387,7 +1387,9 @@
     const rowsDef = [
       ["fac.fci", r => r.fciNow.v == null ? "--" : `<strong>${num1(r.fciNow.v)} %</strong><br><span class="muted small">${esc(t("fac.fciRank", { p: fciRank(r.fciNow.v) }))}</span>`, `${num1(med.fci)} %`],
       ["fac.repairs", r => r.fciNow.v == null ? "--" : esc(t("fac.repairsTxt", { u: r.fciNow.count.Urgent, h: r.fciNow.count.High, m: r.fciNow.count.Medium + r.fciNow.count.Low }))
-        + (r.fciNow.urgent.length ? `<details class="tv"><summary>${esc(t("fac.urgentList"))}</summary><ul class="small">${r.fciNow.urgent.map(x => `<li>${esc(x)}</li>`).join("")}</ul></details>` : ""),
+        // One collapsed list per priority level (descriptions are stored once in F.repairNames)
+        + [["U", "Urgent"], ["H", "High"], ["M", "Medium"], ["L", "Low"]].map(([k, name]) => { const ix = (r.fciNow.items && r.fciNow.items[k]) || [];
+          return ix.length ? `<details class="tv rep rep-${k}"><summary>${esc(t("fac.list." + k, { n: ix.length }))}</summary><ul class="small">${ix.map(i => `<li>${esc(F.repairNames[i])}</li>`).join("")}</ul></details>` : ""; }).join(""),
         esc(t("fac.medUrgent", { n: n0(med.urgent) }))],
       ["fac.built", r => lt(r, x => x.built ? `${x.built} <span class="muted small">(${t("fac.yearsOld", { n: yr - x.built })})</span>` : "--"), esc(t("fac.yearsOld", { n: n0(med.age) }))],
       ["fac.access", r => lt(r, x => x.access ? esc(t("fac.acc." + x.access)) : "--") + ` <a class="small" href="${L.access.replace("{n}", r.schno)}" target="_blank" rel="noopener">${esc(t("fac.details"))} ↗</a>`, ""],

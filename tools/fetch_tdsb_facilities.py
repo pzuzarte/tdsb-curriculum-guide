@@ -183,7 +183,8 @@ def ltpas_fields(rec):
 def fci_page(n, delay):
     raw, fetched = get(FCI_URL.format(n=n), f"fci_{n}.html", delay)
     L = text_lines(raw)
-    out = {"v": None, "year": None, "count": {"Urgent": 0, "High": 0, "Medium": 0, "Low": 0}, "urgent": []}
+    out = {"v": None, "year": None, "count": {"Urgent": 0, "High": 0, "Medium": 0, "Low": 0},
+           "items": {"Urgent": [], "High": [], "Medium": [], "Low": []}}
     for i, l in enumerate(L):
         if l == "F.C.I." and i + 1 < len(L):
             out["v"] = num(L[i + 1])
@@ -199,8 +200,7 @@ def fci_page(n, delay):
         if pri not in out["count"]:
             break
         out["count"][pri] += 1
-        if pri == "Urgent":
-            out["urgent"].append(re.sub(r"^[A-Z]\d{3,8}\s+", "", desc))
+        out["items"][pri].append(re.sub(r"^[A-Z]\d{2,8}\s*(?:-\s+)?", "", desc))  # drop building-system codes like "D2030" or "G30 -"
     return out, fetched
 
 
@@ -276,6 +276,13 @@ def main():
             sys.stdout.flush()
     print(f"LTPAS rows matched: {lt_hits}; FCI pages with a value: {sum(1 for r in out['schools'].values() if r['fciNow']['v'] is not None)}; "
           f"water pages with results: {sum(1 for r in out['schools'].values() if r['water']['n'])}")
+
+    # Repair descriptions repeat across schools: store each once and refer to it by index.
+    names = sorted({d for r in out["schools"].values() for lst in r["fciNow"]["items"].values() for d in lst})
+    idx = {d: i for i, d in enumerate(names)}
+    out["repairNames"] = names
+    for r in out["schools"].values():
+        r["fciNow"]["items"] = {k[0]: [idx[d] for d in lst] for k, lst in r["fciNow"]["items"].items()}  # U, H, M, L
 
     dest = os.path.join(ROOT, "js", "facilities.js")
     with open(dest, "w", encoding="utf-8") as f:

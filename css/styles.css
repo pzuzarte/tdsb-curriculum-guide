@@ -670,3 +670,6 @@ details.how p { font-size: .9rem; color: var(--ink-2); margin: 6px 0; }
 .me-card h3 .sw, .card h3 .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: middle; margin-right: 4px; }
 ol.steps { padding-left: 22px; } ol.steps li { margin: 6px 0; }
 #ccForm input[data-b] { width: 6.5em; }
+/* repair lists by priority */
+details.rep { margin: 4px 0; } details.rep summary { font-size: .9rem; }
+details.rep-U summary { color: var(--l1); } details.rep-H summary { color: var(--l2); }
