@@ -86,6 +86,13 @@ if os.path.exists(os.path.join(ROOT, "js", "facilities.js")):
         check(sum(1 for r in rows if r.get("lt")) >= 400, "facilities.js: fewer than 400 schools matched to LTPAS data")
         check(sum(1 for r in rows if r["water"]["n"]) >= 50, "facilities.js: very few schools with water results")
 
+# Child care in school buildings (optional)
+if os.path.exists(os.path.join(ROOT, "js", "childcare.js")):
+    C = load("js/childcare.js", "window.CHILDCARE")
+    if C:
+        n = sum(len(v) for v in C["schools"].values())
+        check(n >= 300, f"childcare.js: only {n} centres matched to schools")
+
 if problems:
     print("DATA CHECK FAILED:")
     for p in problems:

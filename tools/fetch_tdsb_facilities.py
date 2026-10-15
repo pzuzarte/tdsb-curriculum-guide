@@ -161,7 +161,11 @@ def col(rec, prefix):
 def ltpas_fields(rec):
     acc = col(rec, "Barrier Free").lower()
     util = [num(col(rec, f"Utilization {y}")) for y in (2023, 2028, 2033, 2038, 2043)]
-    ooa = (col(rec, "2024") or col(rec, "OOA")).split(" ")[0] if (col(rec, "2024") or col(rec, "OOA")) else ""
+    # Out-of-area status per program: regular, Early French Immersion, Middle Immersion / Extended French,
+    # Central Student Interest Program. "N/A" = the school doesn't offer that program.
+    toks = re.findall(r"Open|Closed|N/A|Limited(?: \([^)]*\))?", col(rec, "2024") or col(rec, "OOA"))
+    prog = dict(zip(["reg", "fi", "mi", "csip"], [None if x == "N/A" else x for x in toks])) if len(toks) == 4 else None
+    ooa = toks[0].split(" ")[0] if toks else ""
     return {
         "loi": num(col(rec, "LOI")),
         "built": num(col(rec, "Build Date")),
@@ -172,6 +176,7 @@ def ltpas_fields(rec):
         "eco": col(rec, "Eco Schools") or None,
         "pool": bool(col(rec, "Pool")),
         "ooa": ooa if ooa in ("Open", "Limited", "Closed") else None,
+        "prog": prog,
         "site": num(col(rec, "Site Size")),
         "cap": num(col(rec, "Revised Capacity")),
         "enrol": num(col(rec, "Head Count")),

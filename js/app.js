@@ -17,7 +17,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261014f"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261014g"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -856,8 +856,9 @@
   // Load TDSB data plus whatever boards the given (or compared) schools belong to.
   const needTracking = () => loadScript(`js/tracking.js?v=${ASSET_V}`).then(() => window.TRACKING, () => null);
   const needFacilities = () => loadScript(`js/facilities.js?v=${ASSET_V}`).then(() => window.FACILITIES, () => null);
+  const needChildcare = () => loadScript(`js/childcare.js?v=${ASSET_V}`).then(() => window.CHILDCARE, () => null);
   const needSchoolsFor = ids => () => needSchools().then(S => Promise.all([ensureSchools(S, (ids || []).concat(getCompare())), needTracking(),
-    ids && ids.length ? needFacilities() : null]).then(() => S));
+    ids && ids.length ? needFacilities() : null, ids && ids.length ? needChildcare() : null]).then(() => S));
   const schoolById = S => { registerTDSB(S); return schoolCache; };
   const getCompare = () => getJSON(COMPARE_KEY, []).slice(0, 4);
   const setCompare = ids => setJSON(COMPARE_KEY, ids.slice(0, 4));
@@ -1410,6 +1411,36 @@
       <p class="muted small">${esc(t("fac.note", { y: F.ltpasYear }))} ${schools.filter(facOf).map(s => `<a href="${L.fci.replace("{n}", facOf(s).schno)}" target="_blank" rel="noopener">${esc(t("fac.fciLink", { s: s.name }))} ↗</a>`).join(" · ")}</p>`;
   }
 
+  // ---------- programs offered (TDSB plan data) and child care in the building (City of Toronto) ----------
+  const ccOf = s => (window.CHILDCARE && s && window.CHILDCARE.schools[s.id]) || [];
+  const hasBeforeAfter = s => ccOf(s).some(c => c.sp[3] + c.sp[4] > 0);
+  const offersFI = s => { const r = facOf(s), p = r && r.lt && r.lt.prog; return !!(p && (p.fi || p.mi)); };
+  const ooaTxt = v => t("pc.ooa." + (/Siblings/.test(v) ? "sib" : /S\/F/.test(v) ? "sf" : v.split(" ")[0]));
+  function programsSection(S, schools) {
+    const hasProg = schools.some(s => { const r = facOf(s); return r && r.lt && r.lt.prog; });
+    const hasCc = window.CHILDCARE && schools.some(s => ccOf(s).length);
+    if (!hasProg && !hasCc) return "";
+    const progRow = k => [t("pc.prog." + k), s => { const r = facOf(s), p = r && r.lt && r.lt.prog;
+      if (!p) return `<span class="muted">${esc(t("fac.notTdsb"))}</span>`;
+      return p[k] ? `✓ ${esc(t("pc.offered"))}<br><span class="muted small">${esc(t("pc.ooaLabel"))}: ${esc(ooaTxt(p[k]))}</span>` : `<span class="muted">${esc(t("pc.notOffered"))}</span>`; }];
+    const ages = ["I", "T", "P", "K", "S"];
+    const ccCell = s => { const l = ccOf(s);
+      if (!window.CHILDCARE) return "--";
+      if (!l.length) return `<span class="muted">${esc(t("pc.ccNone"))}</span>`;
+      return l.map(c => `<div class="cc"><strong>${esc(c.n)}</strong> <span class="muted small">(${esc(t("pc.aus." + (c.a || "np")))})</span>
+        <ul class="small">${ages.map((a, i) => c.sp[i] ? `<li>${esc(t("pc.age." + a))}: ${c.sp[i]}</li>` : "").join("")}</ul>
+        <span class="small">${[c.cw ? t("pc.cw") : t("pc.noCw"), c.sub ? t("pc.sub") : ""].filter(Boolean).map(esc).join(" · ")}${c.ph ? ` · <span class="nowrap">${esc(c.ph)}</span>` : ""}</span></div>`).join(""); };
+    const rows = [...(hasProg ? ["reg", "fi", "mi", "csip"].map(progRow) : []), [t("pc.cc"), ccCell]];
+    return `<h2>${esc(t("pc.h"))}</h2>${howTo("pc.how")}
+      <div class="table-wrap"><table class="data stack prog">
+        <thead><tr><th></th>${schools.map(s => `<th>${esc(s.name)}</th>`).join("")}</tr></thead>
+        <tbody>${rows.map(([lab, f]) => `<tr><th scope="row">${esc(lab)}</th>${schools.map(s => `<td data-label="${esc(s.name)}">${f(s)}</td>`).join("")}</tr>`).join("")}</tbody>
+      </table></div>
+      <p class="muted small">${esc(t("pc.note", { y: window.FACILITIES ? window.FACILITIES.ltpasYear : "" }))}
+        <a href="https://www.tdsb.on.ca/Find-your/School/Out-of-Area-Admissions/Elementary" target="_blank" rel="noopener">${esc(t("pc.ooaLink"))} ↗</a> ·
+        <a href="${window.CHILDCARE ? window.CHILDCARE.source : "https://open.toronto.ca/dataset/licensed-child-care-centres/"}" target="_blank" rel="noopener">${esc(t("pc.ccLink"))} ↗</a></p>`;
+  }
+
   // ---------- "Schools like this one": nearest schools by community context, same board ----------
   const SIM_KEYS = ["lowinc", "ell", "newc", "sped", "nodeg"];
   function similarSchools(S, school, k = 6) {
@@ -1737,7 +1768,7 @@
     tab = tab === "table" ? "table" : "map";
     withData(needSchoolsFor([]), S => {
       const year = latestYear(S);
-      const state = { q: "", sort: "name", dir: 1, near: null, view: "res" };
+      const state = { q: "", sort: "name", dir: 1, near: null, view: "res", fi: false, cc: false };
       main.innerHTML = `<div id="schoolsView">
         <h1>🏫 ${esc(t("sc.h1"))}</h1>
         <p class="lead">${esc(t("sc.lead"))}</p>
@@ -1751,6 +1782,9 @@
           <button class="btn ghost" id="near">📍 ${esc(t("sc.nearMe"))}</button>
           <a class="btn ghost" href="#/my-eqao">🎯 ${esc(t("tool.myeqao")[0])}</a>
         </div>
+        <div class="filters" role="group" aria-label="${esc(t("pc.filters"))}"><span class="small muted">${esc(t("pc.filters"))}:</span>
+          <label class="chk"><input type="checkbox" id="fFi"> ${esc(t("pc.fFi"))}</label>
+          <label class="chk"><input type="checkbox" id="fCc"> ${esc(t("pc.fCc"))}</label></div>
         <p class="muted small" id="nearMsg" aria-live="polite"></p>
         <div class="subject-tabs" role="tablist">
           <a href="#/schools/map" class="${tab === "map" ? "active" : ""}" style="--c:var(--accent)">🗺️ ${esc(t("sc.map"))}</a>
@@ -1771,6 +1805,8 @@
         let rows = onMode()
           ? window.SCHOOLS_ON._objs.filter(s => !q || s.name.toLowerCase().replace(/\s+/g, "").includes(q) || s.board.toLowerCase().replace(/\s+/g, "").includes(q))
           : S.schools.filter(s => !q || s.name.toLowerCase().replace(/\s+/g, "").includes(q) || (s.postal || "").toLowerCase().startsWith(q));
+        if (state.fi) rows = rows.filter(s => (s.tdsb !== false) && offersFI(s));
+        if (state.cc) rows = rows.filter(hasBeforeAfter);
         if (state.near) rows = rows.map(s => Object.assign({}, s, { _d: distKm(state.near[0], state.near[1], s.lat, s.lon) }));
         return rows;
       };
@@ -1956,6 +1992,13 @@
         if (!sq.isConnected) { document.removeEventListener("click", acOutside); return; }
         if (!ev.target.closest(".ac-wrap")) closeAc();
       });
+      // Program / child care filters: load their data on first use
+      [["fFi", "fi", needFacilities], ["fCc", "cc", needChildcare]].forEach(([id, key, load]) => {
+        document.getElementById(id).addEventListener("change", ev => {
+          const on = ev.target.checked;
+          load().then(() => { state[key] = on; rerender(); });
+        });
+      });
       document.getElementById("near").addEventListener("click", () => {
         const msg = document.getElementById("nearMsg");
         if (!navigator.geolocation) { msg.textContent = t("sc.nearErr"); return; }
@@ -2031,6 +2074,7 @@
         ${dd.html}
         ${similarSection(S, s)}
         ${classSizeSection(S, [s])}
+        ${programsSection(S, [s])}
         ${facilitiesSection(S, [s])}
         <h2>${esc(t("sc.contextH"))}</h2>
         <p class="muted">${esc(t("sc.contextP", { y: yearLabel(S.contextYear) }))}</p>
@@ -2085,6 +2129,7 @@
         ${dd.html}
         <p><a class="btn ghost" href="#/schools/city">📊 ${esc(t("city.see"))}</a></p>
         ${classSizeSection(S, schools)}
+        ${programsSection(S, schools)}
         ${facilitiesSection(S, schools)}
         <h2>${esc(t("sc.ctxCompare"))}</h2>
         <p class="muted">${esc(t("sc.contextP", { y: yearLabel(S.contextYear) }))}</p>

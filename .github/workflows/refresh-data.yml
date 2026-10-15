@@ -49,6 +49,9 @@ jobs:
         if: github.event.schedule == '0 10 15 9,10,11 *' || inputs.tracking
         run: python3 tools/fetch_eqao_tracking.py --boards toronto-cdsb
 
+      - name: Child care in school buildings (City of Toronto open data)
+        run: python3 tools/fetch_childcare.py
+
       # TDSB publishes building data once a year; refresh it on the October 15 run (or on request).
       - name: TDSB buildings and facilities (TDSB website)
         if: github.event.schedule == '0 10 15 9,10,11 *' || inputs.facilities
@@ -87,6 +90,7 @@ jobs:
             - EQAO open data and Ontario school information
             - Grade 3 to 6 tracking (Sep-Nov runs, or when requested)
             - TDSB buildings and facilities (October run, or when requested)
+            - Child care centres in school buildings (City of Toronto)
 
             `tools/check_data.py` passed. Review the changes (look for a new school year in
             `js/schools.js` each fall), then merge to publish.

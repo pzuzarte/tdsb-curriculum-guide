@@ -676,3 +676,10 @@ ol.steps { padding-left: 22px; } ol.steps li { margin: 6px 0; }
 /* repair lists by priority */
 details.rep { margin: 4px 0; } details.rep summary { font-size: .9rem; }
 details.rep-U summary { color: var(--l1); } details.rep-H summary { color: var(--l2); }
+/* programs and child care */
+.filters { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; margin: 4px 0 8px; }
+.filters .chk { display: inline-flex; gap: 6px; align-items: center; font-size: .92rem; cursor: pointer; }
+.filters .chk input { width: 18px; height: 18px; }
+table.prog .cc + .cc { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+table.prog .cc ul { margin: 4px 0; padding-left: 18px; }
+.nowrap { white-space: nowrap; }
