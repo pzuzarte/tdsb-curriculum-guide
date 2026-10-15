@@ -17,7 +17,7 @@
   const THEME_KEY = "tdsb-guide-theme"; // also read by the inline script in index.html
   const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const MEASURES = ["g3r", "g3w", "g3m", "g6r", "g6w", "g6m"];
-  const ASSET_V = "20261014g"; // bump when data files change so browsers fetch fresh copies
+  const ASSET_V = "20261015a"; // bump when data files change so browsers fetch fresh copies
 
   let lang, D, T, gradeById, subjectById, INDEX = null, INDEX_LANG = null;
   let renderId = 0;
@@ -1219,6 +1219,59 @@
       </div>`;
   }
 
+  // ---------- level mix over time: one school, every year (diverging around the standard) ----------
+  function levelTrendChart(S, series, pick) {
+    const s = series[pick] || series[0];
+    const L = t("me.levels");
+    const seg = (cls, v, label, y, m) => v ? `<span class="lv ${cls}" style="width:${v}%" data-tip="${esc(s.label)} -- ${esc(t("m." + m))}, ${esc(yearLabel(y))}: ${esc(label)} ${pctTxt(v)}"></span>` : "";
+    const block = (m, mi) => `<div class="lv-block"><div class="lv-title">${esc(t("m." + m))}</div>${S.years.map(y => {
+        const d = s.school.dist && s.school.dist[y] ? s.school.dist[y][mi] : null;
+        return `<div class="lv-row"><span class="lv-name">${esc(yearLabel(y))}</span>${d ? `<div class="lv-bar"><div class="lv-left">${seg("lv-l1", (d[3] || 0) + (d[4] || 0), t("viz.lvBelow1"), y, m)}${seg("lv-l2", d[2], L["2"], y, m)}</div>
+          <div class="lv-right">${seg("lv-l3", d[1], L["3"], y, m)}${seg("lv-l4", d[0], L["4"], y, m)}</div></div>` : `<span class="muted small">${esc(t("sc.nr"))}</span>`}</div>`; }).join("")}</div>`;
+    return `${series.length > 1 ? `<div class="controls inline"><label>${esc(t("viz.ltSchool"))}<select id="ltPick">${series.map((x, i) => `<option value="${i}" ${i === pick ? "selected" : ""}>${esc(x.label)}</option>`).join("")}</select></label></div>` : ""}
+      <div class="legend"><span><i class="sw lv-l1"></i>${esc(t("viz.lvBelow1"))}</span><span><i class="sw lv-l2"></i>${esc(L["2"])}</span>
+        <span class="lv-sep">|</span><span><i class="sw lv-l3"></i>${esc(L["3"])}</span><span><i class="sw lv-l4"></i>${esc(L["4"])}</span></div>
+      <div class="lvc lvt">${MEASURES.map(block).join("")}
+        <div class="lv-axis"><span></span><div><span>100%</span><span>50%</span><span class="mid">${esc(t("viz.standard"))}</span><span>50%</span><span>100%</span></div></div></div>`;
+  }
+
+  // ---------- radar: where a school sits among TDSB schools (percentile on every axis) ----------
+  // Every axis is the school's percentile among TDSB schools, so all axes share one 0-100 scale; the dashed ring is the
+  // typical school (50th percentile). Results use five-year averages.
+  const RADAR_RES = MEASURES.map((m, i) => ({ key: m, label: () => t("m." + m), val: (S, s) => { const v = S.years.map(y => s.res[y] && s.res[y][i]).filter(x => x != null); return v.length ? mean(v) : null; } }));
+  const RADAR_CTX = ["lowinc", "ell", "newc", "sped", "nodeg"].map(k => ({ key: k, label: () => t("rd." + k), val: (S, s) => s.ctx[k] }));
+  function radarSVG(w, S, series, axes, label) {
+    const n = axes.length, R = Math.max(50, Math.min(150, w / 2 - 95)), H = 2 * R + 90, cx = w / 2, cy = R + 45;
+    const pool = axes.map(a => S.schools.map(s => a.val(S, s)).filter(v => v != null).sort((x, y) => x - y));
+    const pct = (k, v) => { const p = pool[k]; if (v == null || !p.length) return null; const lo = p.filter(x => x < v).length, eq = p.filter(x => x === v).length; return 100 * (lo + eq / 2) / p.length; };
+    const ang = k => -Math.PI / 2 + 2 * Math.PI * k / n;
+    const pt = (k, r) => [cx + Math.cos(ang(k)) * R * r / 100, cy + Math.sin(ang(k)) * R * r / 100];
+    const ring = r => `<polygon points="${axes.map((a, k) => pt(k, r).map(v => v.toFixed(1)).join(",")).join(" ")}" class="rd-ring ${r === 50 ? "mid" : ""}"/>`;
+    // Labels wrap onto two lines so long names stay inside the chart
+    const wrap = txt => { const w = txt.split(" "); if (txt.length <= 14 || w.length < 2) return [txt];
+      let best = 1, diff = 1e9; for (let i = 1; i < w.length; i++) { const d = Math.abs(w.slice(0, i).join(" ").length - w.slice(i).join(" ").length); if (d < diff) { diff = d; best = i; } }
+      return [w.slice(0, best).join(" "), w.slice(best).join(" ")]; };
+    const spokes = axes.map((a, k) => { const [x, y] = pt(k, 100), [lx, ly] = pt(k, 116);
+      const anchor = Math.abs(lx - cx) < 8 ? "middle" : lx > cx ? "start" : "end";
+      const lines = wrap(a.label()), y0 = ly + 4 - (lines.length - 1) * 6;
+      return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" class="rd-spoke"/><text x="${lx.toFixed(1)}" y="${y0.toFixed(1)}" text-anchor="${anchor}" class="ax rd-lab">${lines.map((l, i) => `<tspan x="${lx.toFixed(1)}" dy="${i ? 12 : 0}">${esc(l)}</tspan>`).join("")}</text>`; }).join("");
+    const shapes = series.map(s => { const ps = axes.map((a, k) => pct(k, a.val(S, s.school)));
+      if (ps.every(v => v == null)) return "";
+      const poly = ps.map((p, k) => pt(k, p == null ? 0 : p).map(v => v.toFixed(1)).join(",")).join(" ");
+      return `<polygon points="${poly}" class="rd-shape" style="stroke:${s.color};fill:${s.color}"/>` + ps.map((p, k) => p == null ? "" : (([x, y]) =>
+        `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" style="fill:${s.color}"/><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="10" class="hit" data-tip="${esc(t("viz.radarTip", { s: s.label, a: axes[k].label(), p: Math.round(p) }))}"/>`)(pt(k, p))).join(""); }).join("");
+    return `<svg width="${w}" height="${H}" viewBox="0 0 ${w} ${H}" class="viz" role="img" aria-label="${esc(label)}">${[25, 50, 75, 100].map(ring).join("")}${spokes}${shapes}</svg>`;
+  }
+  function radarCharts(S, series) {
+    const html = `${chartLegend(series, { noOntario: true, tdsbLabel: t("viz.radarMid") })}<div class="grid grid-2">
+      <figure class="card trend"><figcaption>${esc(t("viz.radarRes"))}</figcaption><div id="radarRes" class="mount"></div></figure>
+      <figure class="card trend"><figcaption>${esc(t("viz.radarCtx"))}</figcaption><div id="radarCtx" class="mount"></div></figure></div>
+      <p class="muted small">${esc(t("viz.radarNote"))}</p>`;
+    const draw = () => { mount(document.getElementById("radarRes"), w => radarSVG(w, S, series, RADAR_RES, t("viz.radarRes")));
+      mount(document.getElementById("radarCtx"), w => radarSVG(w, S, series, RADAR_CTX, t("viz.radarCtx"))); };
+    return { html, draw };
+  }
+
   // ---------- C4: where each school sits among all TDSB schools ----------
   function stripChart(S, series, year) {
     const rows = [...MEASURES.map((m, i) => ({ label: t("m." + m), val: s => (s.res[year] ? s.res[year][i] : null), ref: S.reference[year].tdsb[i], refLabel: t("sc.typTDSB"), tip: "viz.stripTipRes" })),
@@ -1241,7 +1294,33 @@
             .map(o => `<b style="left:${o.pos}%;margin-top:${o.dy - 7}px;background:${o.s.color}" data-sid="${o.s.school.id}" data-tip="${esc(t(r.tip, { s: o.s.label, v: pctTxt(o.v), ...split(o.v) }))}"></b>`).join("")}
         </div></div>`;
     }).join("")}${axisRow()}</div>
+    ${buildingStrips(S, series)}
     <p class="muted small">${esc(t("viz.stripNote"))}</p><p class="muted small click-hint">👆 ${esc(t("viz.clickHint"))}</p>`;
+  }
+  // Building and need rows: each has its own scale (shown under the row), so they sit apart from the 0-100% rows above.
+  function buildingStrips(S, series) {
+    const F = window.FACILITIES;
+    if (!F || !series.some(x => facOf(x.school))) return "";
+    const lt = s => (facOf(s) && facOf(s).lt) || {};
+    const loiMax = Math.max(...Object.values(F.schools).map(r => (r.lt && r.lt.loi) || 0));
+    const rows = [
+      { label: t("fac.fci"), val: s => facOf(s) && facOf(s).fciNow.v, lo: 0, hi: 150, ends: ["0%", "150%"], tip: "viz.stripTipFci", fmt: v => (Math.round(v * 10) / 10) + "%" },
+      { label: t("fac.built"), val: s => lt(s).built, lo: 1880, hi: 2030, ends: ["1880", "2030"], tip: "viz.stripTipBuilt", fmt: v => String(v) },
+      { label: t("fac.full"), val: s => lt(s).util && lt(s).util[0], lo: 0, hi: 200, ends: ["0%", "200%"], tip: "viz.stripTipFull", fmt: v => v + "%" },
+      { label: t("fac.loi"), val: s => lt(s).loi, lo: loiMax, hi: 1, ends: [t("viz.lowerNeed"), t("viz.higherNeed")], tip: "viz.stripTipLoi", fmt: v => String(v), rev: true }];
+    return `<h3 class="mt6">${esc(t("viz.stripBldH"))}</h3><div class="strips bstrips">${rows.map(r => {
+      const pos = v => Math.max(0, Math.min(100, 100 * (v - r.lo) / (r.hi - r.lo)));
+      const all = S.schools.map(s => ({ s, v: r.val(s) })).filter(o => o.v != null);
+      const vals = all.map(o => o.v).sort((a, b) => a - b), med = medianOf(vals);
+      const split = v => { const n = vals.length, lo = vals.filter(x => (r.rev ? x > v : x < v)).length, hi = vals.filter(x => (r.rev ? x < v : x > v)).length;
+        const pl = Math.round(100 * lo / n), ph = Math.round(100 * hi / n); return { lo: pl, same: 100 - pl - ph, hi: ph, n: loiMax }; };
+      return `<div class="hb-row ctxrow"><div class="hb-label">${esc(r.label)}</div>
+        <div class="strip">${all.map(o => `<i style="left:${pos(o.v)}%;top:${50 + jitter(o.s.id, 38)}%" data-sid="${o.s.id}" data-tip="${esc(o.s.name)}: ${esc(r.fmt(o.v))}"></i>`).join("")}
+          <span class="hb-ref r2" style="left:${pos(med)}%" data-tip="${esc(t("sc.typCtx"))}: ${esc(r.fmt(Math.round(med)))}"></span>
+          ${stackDots(series.map(x => ({ s: x, v: r.val(x.school) })).filter(o => o.v != null).map(o => ({ ...o, pos: pos(o.v) })))
+            .map(o => `<b style="left:${o.pos}%;margin-top:${o.dy - 7}px;background:${o.s.color}" data-sid="${o.s.school.id}" data-tip="${esc(t(r.tip, { s: o.s.label, v: r.fmt(o.v), ...split(o.v) }))}"></b>`).join("")}
+          <span class="strip-end l">${esc(r.ends[0])}</span><span class="strip-end r">${esc(r.ends[1])}</span>
+        </div></div>`; }).join("")}</div>`;
   }
 
   // Schools with the same (or nearly the same) value would hide each other, so stack those dots vertically.
@@ -1356,6 +1435,10 @@
       <p class="muted small">${esc(t("cs.note"))} <a href="https://www.ontario.ca/laws/regulation/120132" target="_blank" rel="noopener">${esc(t("cs.reg"))} ↗</a></p>`;
   }
 
+  // Charts inside static sections register a draw function here; the page runs them once its HTML is in place.
+  let afterDraw = [];
+  const runAfterDraw = () => { const q = afterDraw; afterDraw = []; q.forEach(f => f()); };
+
   // ---------- buildings and facilities (TDSB schools only; js/facilities.js) ----------
   const facOf = s => (window.FACILITIES && s && window.FACILITIES.schools[s.id]) || null;
   // TDSB medians, for the reference column
@@ -1376,6 +1459,21 @@
   // Share of TDSB elementary schools in better condition (lower FCI) than this one
   const fciRank = v => { const all = Object.values(window.FACILITIES.schools).map(r => r.fciNow && r.fciNow.v).filter(x => x != null);
     return Math.round(100 * all.filter(x => x < v).length / all.length); };
+  // How full each school is in 2023 and TDSB's projections to 2043 (100% = at capacity)
+  function enrolOutlook(schools) {
+    const list = schools.map((s, i) => ({ s, i, u: facOf(s) && facOf(s).lt && facOf(s).lt.util })).filter(x => x.u);
+    if (!list.length) return "";
+    const top = Math.max(150, ...list.flatMap(x => x.u.filter(v => v != null))) ;
+    const y1 = Math.ceil(top / 50) * 50;
+    afterDraw.push(() => mount(document.getElementById("enrolOut"), w => linesSVG(w, {
+      xs: ["2023", "2028", "2033", "2038", "2043"], y0: 0, y1, h: 220, yTicks: [0, 50, 100, 150, 200].filter(v => v <= y1), label: t("fac.outlookH"),
+      series: [{ label: t("fac.capLine"), cls: "ref r1", vals: [100, 100, 100, 100, 100], noDots: true },
+        ...list.map(x => ({ label: x.s.name, color: schools.length > 1 ? SERIES[x.i] : "var(--s1)", vals: x.u }))]
+    })));
+    return `<h3 class="mt6">${esc(t("fac.outlookH"))}</h3>
+      <div class="legend">${schools.length > 1 ? list.map(x => `<span><i class="sw" style="background:${SERIES[x.i]}"></i>${esc(x.s.name)}</span>`).join("") : ""}<span><i class="refkey r1"></i>${esc(t("fac.capLine"))}</span></div>
+      <div id="enrolOut" class="mount"></div><p class="muted small">${esc(t("fac.outlookNote"))}</p>`;
+  }
   function facilitiesSection(S, schools) {
     const F = window.FACILITIES;
     if (!F || !schools.some(facOf)) return "";
@@ -1408,6 +1506,7 @@
         <thead><tr><th></th>${schools.map(s => `<th>${esc(s.name)}</th>`).join("")}<th>${esc(t("fac.tdsbTypical"))}</th></tr></thead>
         <tbody>${rowsDef.map(([k, f, ref]) => `<tr><th scope="row">${esc(t(k))}</th>${schools.map(s => `<td data-label="${esc(s.name)}">${cell(s, f)}</td>`).join("")}<td class="muted" data-label="${esc(t("fac.tdsbTypical"))}">${ref || ""}</td></tr>`).join("")}</tbody>
       </table></div>
+      ${enrolOutlook(schools)}
       <p class="muted small">${esc(t("fac.note", { y: F.ltpasYear }))} ${schools.filter(facOf).map(s => `<a href="${L.fci.replace("{n}", facOf(s).schno)}" target="_blank" rel="noopener">${esc(t("fac.fciLink", { s: s.name }))} ↗</a>`).join(" · ")}</p>`;
   }
 
@@ -1522,12 +1621,16 @@
     const year = latestYear(S);
     const coh = cohortCharts(S, series);
     const gcoh = genderCohortCharts(S, series);
+    const rad = radarCharts(S, series);
     const trk = trackingChart(series);
     const html = `
+      <h2>${esc(t("viz.radarH"))}</h2>${howTo("viz.radarHow")}${rad.html}
       <h2>${esc(t("viz.rangeH"))}</h2>${howTo("viz.rangeHow")}
       <div class="card">${rangeChart(S, series)}</div>
       <h2>${esc(t("viz.levelsH", { y: yearLabel(year) }))}</h2>${howTo("viz.levelsHow")}
       <div class="card">${levelChart(S, series, year)}</div>
+      <h2>${esc(t("viz.ltH"))}</h2>${howTo("viz.ltHow")}
+      <div class="card" id="ltOut">${levelTrendChart(S, series, 0)}</div>
       <h2>${esc(t("viz.stripH", { y: yearLabel(year) }))}</h2>${howTo("viz.stripHow")}
       <div class="card">${stripChart(S, series, year)}</div>
       <h2>${esc(t("viz.subH", { a: yearLabel(S.years[0]), b: yearLabel(S.years[S.years.length - 1]) }))}</h2>${howTo("viz.subHow")}
@@ -1541,6 +1644,9 @@
       if (sel) sel.addEventListener("change", () => { document.getElementById("sgOut").innerHTML = subgroupChart(S, series, +sel.value); });
       if (coh) coh.draw();
       if (gcoh) gcoh.draw();
+      rad.draw();
+      const lt = document.getElementById("ltOut");
+      if (lt) lt.addEventListener("change", ev => { if (ev.target.id === "ltPick") lt.innerHTML = levelTrendChart(S, series, +ev.target.value); });
     };
     return { html, wire };
   }
@@ -1551,7 +1657,7 @@
 
   function viewCity() {
     withData(needSchoolsFor([]), S => {
-      const st = { mi: 5, year: latestYear(S), sq: 0, exp: "inc" };
+      const st = { mi: 5, year: latestYear(S), sq: 0, exp: "inc", layer: "res" };
       const by = schoolById(S);
       let sel = getCompare().filter(id => by[id]);
       main.innerHTML = `<div id="cityView">
@@ -1571,7 +1677,7 @@
             : esc(t("city.highlightNone"))}</p>
         <section><h2>${esc(t("city.oddsH"))}</h2><div id="cOddsHow">${howTo("city.oddsHow")}</div><div class="card"><div class="controls inline"><label>${esc(t("city.expBasis"))}<select id="cExp"><option value="inc">${esc(t("city.exp.inc"))}</option><option value="ctx">${esc(t("city.exp.ctx"))}</option><option value="loi">${esc(t("city.exp.loi"))}</option></select></label></div><div id="cOddsSum" class="small"></div>${resLegend()}<div id="cOdds" class="mount"></div><p class="muted small click-hint">👆 ${esc(t("viz.clickHint"))}</p>
           <details class="tv"><summary>${esc(t("city.oddsTable"))}</summary><div id="cOddsTbl"></div></details></div></section>
-        <section><h2>${esc(t("city.mapH"))}</h2>${howTo("city.mapHow")}<div class="card">${scopeToggle()}<p class="muted small" id="cMapNote"></p>${resLegend()}<div id="cMap" class="map"></div><p class="muted small">${esc(t("sc.mapNote"))}</p></div></section>
+        <section><h2>${esc(t("city.mapH"))}</h2>${howTo("city.mapHow")}<div class="card"><div class="controls inline"><label>${esc(t("city.layer"))}<select id="cLayer">${["res", "loi", "fci", "full", "fi", "cc"].map(k => `<option value="${k}">${esc(t("city.layer." + k))}</option>`).join("")}</select></label></div>${scopeToggle()}<p class="muted small" id="cMapNote"></p><div id="cMapLegend">${resLegend()}</div><div id="cMap" class="map"></div><p class="muted small">${esc(t("sc.mapNote"))}</p></div></section>
         <section><h2>${esc(t("city.incomeH"))}</h2>${howTo("city.incomeHow")}<div class="card"><div id="cIncLegend"></div><div id="cIncome" class="mount"></div><div id="cIncTbl"></div></div></section>
         <section><h2>${esc(t("city.funnelH"))}</h2>${howTo("city.funnelHow")}<div class="card"><div id="cFunSum" class="small"></div><div id="cFunnel" class="mount"></div><p class="muted small click-hint">👆 ${esc(t("viz.clickHint"))}</p></div></section>
         <section><h2>${esc(t("city.groupsH"))}</h2>${howTo("city.groupsHow")}<div class="card"><div class="legend"><span><i class="refkey r1"></i>${esc(t("sc.typTDSB"))}</span><span><i class="refkey r2"></i>${esc(t("sc.typON"))}</span></div><div id="cGroups" class="grid grid-3"></div></div></section>
@@ -1620,11 +1726,40 @@
         drawCityMap(pts);
       }
 
+      // Map layers other than results: quartiles among TDSB schools (darker = more), or yes/no.
+      const LAYERS = {
+        loi: { v: s => { const r = facOf(s); return r && r.lt.loi ? -r.lt.loi : null; }, show: v => t("fac.loiTxt", { r: -v, n: 470 }) },
+        fci: { v: s => { const r = facOf(s); return r ? r.fciNow.v : null; }, show: v => `FCI ${Math.round(v * 10) / 10}%` },
+        full: { v: s => { const r = facOf(s); return r && r.lt.util ? r.lt.util[0] : null; }, show: v => t("city.layerFull", { v }) },
+        fi: { bin: s => (facOf(s) ? offersFI(s) : null) },
+        cc: { bin: s => (window.CHILDCARE ? hasBeforeAfter(s) : null) }
+      };
+      function layerInfo() {
+        const L = LAYERS[st.layer];
+        if (!L || L.bin) return L;
+        if (!L.cuts) { const v = S.schools.map(L.v).filter(x => x != null).sort((a, b) => a - b); L.cuts = [0.25, 0.5, 0.75].map(q => v[Math.floor(q * v.length)]); L.range = [v[0], v[v.length - 1]]; }
+        return L;
+      }
+      const layerClass = (L, s) => { if (L.bin) { const b = L.bin(s); return b == null ? null : b ? "yes" : "no"; }
+        const v = L.v(s); return v == null ? null : "q" + (1 + L.cuts.filter(c => v >= c).length); };
+      function layerLegend(L) {
+        if (!L) return resLegend();
+        if (L.bin) return `<div class="legend"><span><i class="sw" style="background:var(--accent)"></i>${esc(t("city.layerYes." + st.layer))}</span><span><i class="sw" style="background:var(--lr)"></i>${esc(t("city.layerNo"))}</span></div>`;
+        const shw = v => st.layer === "loi" ? String(-v) : st.layer === "fci" ? `${Math.round(v)}%` : `${v}%`;
+        const b = [L.range[0], ...L.cuts, L.range[1]];
+        return `<div class="legend">${[0, 1, 2, 3].map(i => `<span><i class="sw" style="background:var(--q${i + 1})"></i>${esc(t("city.layerQ" + i + "." + st.layer, { a: shw(b[i]), b: shw(b[i + 1]) }))}</span>`).join("")}</div>`;
+      }
+
       // Map: TDSB schools vs the TDSB pattern, or every Ontario English-language school vs the Ontario pattern.
       let lastMapScope = null;
       function drawCityMap(tdsbPts) {
         if (!mapApi) return;
         const note = document.getElementById("cMapNote");
+        document.getElementById("cMapLegend").innerHTML = layerLegend(st.layer === "res" ? null : layerInfo());
+        if (st.layer !== "res") { // building, program and child care layers cover TDSB schools only
+          note.textContent = mapScope === "on" ? t("city.layerTdsbOnly") : "";
+          mapApi(tdsbPts || expectedFor(S, st.year, st.mi, st.exp).pts, false); return;
+        }
         if (mapScope !== "on") { note.textContent = ""; mapApi(tdsbPts || expectedFor(S, st.year, st.mi, st.exp).pts, false); return; }
         needOntario().then(O => {
           const { pts } = expectedPts(O._objs.filter(o => !o.fr && o.r[st.mi] != null).map(o => ({ s: o, y: o.r[st.mi] })), st.exp === "loi" ? "inc" : st.exp);
@@ -1655,10 +1790,17 @@
             });
             return;
           }
-          pts.forEach(p => {
+          const LI = st.layer === "res" ? null : layerInfo();
+          const fillOf = p => { if (!LI) return css("--rb-" + resBin(p.r)); const c = layerClass(LI, p.s);
+            return c == null ? "transparent" : c === "yes" ? css("--accent") : c === "no" ? css("--lr") : css("--" + c); };
+          const layerLine = p => { if (!LI) return ""; if (LI.bin) { const b = LI.bin(p.s); return b == null ? "" : `<br>${esc(t(b ? "city.layerYes." + st.layer : "city.layerNo"))}`; }
+            const v = LI.v(p.s); return v == null ? "" : `<br>${esc(LI.show(v))}`; };
+          // with a layer, also show schools that have no EQAO result this year
+          const shown = LI ? S.schools.filter(s => s.lat != null).map(s => pts.find(p => p.s === s) || { s, r: 0, y: null }) : pts;
+          shown.forEach(p => {
             const hi = hiIndex(p.s);
-            L.circleMarker([p.s.lat, p.s.lon], { radius: hi >= 0 ? 9 : mapDot(), weight: hi >= 0 ? 3 : 1.5, color: hi >= 0 ? css(`--s${hi + 1}`) : css("--surface"), fillColor: css("--rb-" + resBin(p.r)), fillOpacity: 0.95 })
-              .bindPopup(() => `<strong><a href="#/school/${p.s.id}">${esc(p.s.name)}</a></strong><br>${esc(t("city.oddsTip", { s: "", v: pctTxt(p.y), e: pctTxt(Math.round(p.exp)), d: signed(p.r), li: pctTxt(p.x) }).replace(/^\s*--\s*/, ""))}
+            L.circleMarker([p.s.lat, p.s.lon], { radius: hi >= 0 ? 9 : mapDot(), weight: hi >= 0 ? 3 : 1.5, color: hi >= 0 ? css(`--s${hi + 1}`) : css("--surface"), fillColor: fillOf(p), fillOpacity: 0.95 })
+              .bindPopup(() => `<strong><a href="#/school/${p.s.id}">${esc(p.s.name)}</a></strong>${layerLine(p)}${p.y != null && p.exp != null ? `<br>${esc(t("city.oddsTip", { s: "", v: pctTxt(p.y), e: pctTxt(Math.round(p.exp)), d: signed(p.r), li: pctTxt(p.x) }).replace(/^\s*--\s*/, ""))}` : ""}
                 <br>${addBtn(p.s.id)}`)
               .addTo(layer);
           });
@@ -1745,6 +1887,10 @@
       document.getElementById("cMeasure").addEventListener("change", ev => { st.mi = +ev.target.value; drawAll(); });
       document.getElementById("cYear").addEventListener("change", ev => { st.year = ev.target.value; drawOdds(); });
       document.getElementById("cExp").addEventListener("change", ev => { st.exp = ev.target.value; drawOdds(); });
+      document.getElementById("cLayer").addEventListener("change", ev => {
+        const k = ev.target.value;
+        Promise.all([needFacilities(), needChildcare()]).then(() => { st.layer = k; drawCityMap(); });
+      });
       document.getElementById("cSq").addEventListener("change", ev => { st.sq = +ev.target.value; drawSq(); });
       // After a school is added or removed anywhere on this page, refresh the highlights everywhere.
       onCompareChange = () => {
@@ -2081,6 +2227,7 @@
         ${contextTable(S, [s])}
         <p class="muted small">${esc(t("sc.typNote"))}</p></div>`;
       dd.wire();
+      runAfterDraw();
       onCompareChange = () => { const y = window.scrollY; viewSchool(id); setTimeout(() => window.scrollTo(0, y), 150); };
       // One handler on this render's own container, so re-rendering never stacks duplicate handlers.
       document.getElementById("profileView").addEventListener("click", ev => {
@@ -2136,6 +2283,7 @@
         ${contextTable(S, schools)}
         <p class="muted small">${esc(t("sc.typNote"))}</p>`;
       dd.wire();
+      runAfterDraw();
       onCompareChange = () => { location.hash = `#/compare-schools/${getCompare().join(",")}`; };
       main.querySelector("#trayWrap").addEventListener("click", ev => {
         const tg = ev.target.closest("button[data-toggle]");

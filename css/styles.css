@@ -683,3 +683,13 @@ details.rep-U summary { color: var(--l1); } details.rep-H summary { color: var(-
 table.prog .cc + .cc { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
 table.prog .cc ul { margin: 4px 0; padding-left: 18px; }
 .nowrap { white-space: nowrap; }
+/* radar charts */
+.rd-ring { fill: none; stroke: var(--line); stroke-width: 1; }
+.rd-ring.mid { stroke: var(--ink-2); stroke-dasharray: 4 3; }
+.rd-spoke { stroke: var(--line); stroke-width: 1; }
+.rd-shape { fill-opacity: .14; stroke-width: 2; }
+.rd-lab { font-size: 11px; }
+/* building strips: each row has its own scale */
+.bstrips .strip { position: relative; margin-bottom: 14px; }
+.strip-end { position: absolute; bottom: -16px; font-size: 11px; color: var(--ink-2); }
+.strip-end.l { left: 0; } .strip-end.r { right: 0; }
